@@ -1,3 +1,4 @@
+[![Build & Release Drop&Resize ](https://github.com/Weegley/Drop-Resize/actions/workflows/BuildAndReleaseDropResize.yml/badge.svg)](https://github.com/Weegley/Drop-Resize/actions/workflows/BuildAndReleaseDropResize.yml)
 # Drop&Resize
 
 Drop&Resize is a small Windows utility for quickly resizing image files.
