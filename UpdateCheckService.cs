@@ -12,13 +12,14 @@ namespace DropResize
     public class UpdateCheckService
     {
         private const string LatestReleaseApiUrl = "https://api.github.com/repos/Weegley/Drop-Resize/releases/latest";
+        private const string UpdateApiUrlOverrideVariable = "DROPRESIZE_UPDATE_API_URL";
         private static readonly HttpClient Client = CreateClient();
 
         public async Task<UpdateInfo> CheckForUpdateAsync(CancellationToken cancellationToken)
         {
             ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
 
-            using (var request = new HttpRequestMessage(HttpMethod.Get, LatestReleaseApiUrl))
+            using (var request = new HttpRequestMessage(HttpMethod.Get, GetLatestReleaseApiUrl()))
             {
                 request.Headers.TryAddWithoutValidation("User-Agent", "DropResize");
                 request.Headers.TryAddWithoutValidation("Accept", "application/vnd.github+json");
@@ -49,6 +50,12 @@ namespace DropResize
             };
         }
 
+        private static string GetLatestReleaseApiUrl()
+        {
+            var overrideUrl = Environment.GetEnvironmentVariable(UpdateApiUrlOverrideVariable);
+            return string.IsNullOrWhiteSpace(overrideUrl) ? LatestReleaseApiUrl : overrideUrl;
+        }
+
         private static Version GetCurrentVersion()
         {
             var location = Assembly.GetExecutingAssembly().Location;
@@ -63,7 +70,7 @@ namespace DropResize
         {
             var tagName = ReadJsonString(json, "tag_name");
             var releaseUrl = ReadJsonString(json, "html_url");
-            var downloadUrl = ReadJsonString(json, "browser_download_url");
+            var downloadUrl = ReadDownloadUrl(json);
 
             if (string.IsNullOrWhiteSpace(tagName))
             {
@@ -96,6 +103,29 @@ namespace DropResize
             var pattern = "\"" + Regex.Escape(propertyName) + "\"\\s*:\\s*\"(?<value>(?:\\\\.|[^\"])*)\"";
             var match = Regex.Match(json, pattern);
             return match.Success ? Regex.Unescape(match.Groups["value"].Value) : null;
+        }
+
+        private static string ReadDownloadUrl(string json)
+        {
+            var pattern = "\"browser_download_url\"\\s*:\\s*\"(?<value>(?:\\\\.|[^\"])*)\"";
+            var matches = Regex.Matches(json, pattern);
+            string firstUrl = null;
+
+            foreach (Match match in matches)
+            {
+                var url = Regex.Unescape(match.Groups["value"].Value);
+                if (firstUrl == null)
+                {
+                    firstUrl = url;
+                }
+
+                if (url.EndsWith("DropResize-Windows.zip", StringComparison.OrdinalIgnoreCase))
+                {
+                    return url;
+                }
+            }
+
+            return firstUrl;
         }
     }
 }

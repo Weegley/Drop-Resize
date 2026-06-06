@@ -28,38 +28,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract version from AssemblyInfo
-        id: get_version
-        shell: pwsh
-        run: |
-          $version = $null
-
-          $assemblyInfo = Get-ChildItem -Path . -Filter AssemblyInfo.cs -Recurse |
-            Where-Object { $_.FullName -notmatch '\\bin\\|\\obj\\' } |
-            Select-Object -First 1
-
-          if ($assemblyInfo) {
-            $content = Get-Content -Path $assemblyInfo.FullName -Raw
-
-            $fileVersionMatch = [regex]::Match($content, 'AssemblyFileVersion\("([^"]+)"\)')
-            $assemblyVersionMatch = [regex]::Match($content, 'AssemblyVersion\("([^"]+)"\)')
-
-            if ($fileVersionMatch.Success) {
-              $version = $fileVersionMatch.Groups[1].Value
-            }
-            elseif ($assemblyVersionMatch.Success) {
-              $version = $assemblyVersionMatch.Groups[1].Value
-            }
-          }
-
-          if (-not $version) {
-            $version = "0.1.0"
-          }
-
-          $version = $version.Trim()
-          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          Write-Host "Project version: $version"
-
       - name: Set up MSBuild
         uses: microsoft/setup-msbuild@v2
         with:
@@ -73,7 +41,39 @@ jobs:
       - name: Build solution
         shell: pwsh
         run: |
-          msbuild "Drop&Resize.sln" /p:Configuration=Release /p:Platform="Any CPU"
+          msbuild "Drop&Resize.sln" /p:Configuration=Release /p:Platform="Any CPU" /p:BuildRevision=${{ github.run_number }}
+
+      - name: Extract version from generated assembly info
+        id: get_version
+        shell: pwsh
+        run: |
+          $version = $null
+
+          $versionInfo = Get-ChildItem -Path . -Filter VersionInfo.Generated.cs -Recurse |
+            Where-Object { $_.FullName -notmatch '\\bin\\|\\obj\\' } |
+            Select-Object -First 1
+
+          if ($versionInfo) {
+            $content = Get-Content -Path $versionInfo.FullName -Raw
+
+            $fileVersionMatch = [regex]::Match($content, 'AssemblyFileVersion\("([^"]+)"\)')
+            $assemblyVersionMatch = [regex]::Match($content, 'AssemblyVersion\("([^"]+)"\)')
+
+            if ($fileVersionMatch.Success) {
+              $version = $fileVersionMatch.Groups[1].Value
+            }
+            elseif ($assemblyVersionMatch.Success) {
+              $version = $assemblyVersionMatch.Groups[1].Value
+            }
+          }
+
+          if (-not $version) {
+            throw "Generated version file was not found or does not contain a version."
+          }
+
+          $version = $version.Trim()
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Project version: $version"
 
       - name: Prepare release files
         shell: pwsh

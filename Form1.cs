@@ -18,6 +18,7 @@ namespace DropResize
     {
         private readonly ProfileStore profileStore = new ProfileStore();
         private readonly UpdateCheckService updateCheckService = new UpdateCheckService();
+        private readonly AutoUpdateService autoUpdateService = new AutoUpdateService();
         private readonly List<ImageCardControl> selectedCards = new List<ImageCardControl>();
         private readonly ConcurrentQueue<ResizeResult> pendingResults = new ConcurrentQueue<ResizeResult>();
 
@@ -143,6 +144,7 @@ namespace DropResize
 
         private void ConfigureRuntimeUi()
         {
+            Text = "Drop&Resize " + GetCurrentVersionText();
             BindProfiles(profileStore.LoadLastProfileId());
             profileComboBox.SelectedIndexChanged += ProfileComboBox_SelectedIndexChanged;
 
@@ -161,6 +163,16 @@ namespace DropResize
             processingOverlay.BringToFront();
             CenterProcessingBox();
             UpdateInstructionLayout();
+        }
+
+        private static string GetCurrentVersionText()
+        {
+            var location = Assembly.GetExecutingAssembly().Location;
+            var fileVersion = FileVersionInfo.GetVersionInfo(location).FileVersion;
+
+            return string.IsNullOrWhiteSpace(fileVersion)
+                ? Assembly.GetExecutingAssembly().GetName().Version.ToString()
+                : fileVersion;
         }
 
         private void BindProfiles(string selectedId)
@@ -408,7 +420,10 @@ namespace DropResize
                 SetStatus("Update available: Drop&Resize " + update.VersionText + ".");
                 using (var dialog = new UpdateAvailableDialog(update))
                 {
-                    dialog.ShowDialog(this);
+                    if (dialog.ShowDialog(this) == DialogResult.OK)
+                    {
+                        await InstallUpdateAsync(update, cancellationToken);
+                    }
                 }
             }
             catch (OperationCanceledException)
@@ -431,6 +446,33 @@ namespace DropResize
 
                 updateCheckInProgress = false;
             }
+        }
+
+        private async Task InstallUpdateAsync(UpdateInfo update, CancellationToken cancellationToken)
+        {
+            if (isProcessing)
+            {
+                var answer = MessageBox.Show(
+                    "Cancel current processing and install the update now?",
+                    "Drop&Resize",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question);
+
+                if (answer != DialogResult.Yes)
+                {
+                    return;
+                }
+
+                currentCancellation.Cancel();
+                KillCurrentWorker();
+            }
+
+            await autoUpdateService.DownloadAndStartUpdateAsync(
+                update,
+                SetStatusThreadSafe,
+                cancellationToken);
+
+            Application.Exit();
         }
 
         private void Form1_DragEnter(object sender, DragEventArgs e)
@@ -1363,6 +1405,17 @@ namespace DropResize
 
             if (batchId != currentBatchId)
             {
+                return;
+            }
+
+            SetStatus(text);
+        }
+
+        private void SetStatusThreadSafe(string text)
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action<string>(SetStatusThreadSafe), text);
                 return;
             }
 

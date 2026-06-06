@@ -20,7 +20,7 @@ namespace DropResize
             MaximizeBox = false;
             MinimizeBox = false;
             ShowInTaskbar = false;
-            ClientSize = new Size(430, 180);
+            ClientSize = new Size(430, 190);
 
             var titleLabel = new Label
             {
@@ -36,7 +36,7 @@ namespace DropResize
                 AutoSize = false,
                 Location = new Point(18, 52),
                 Size = new Size(394, 42),
-                Text = "Open the release page or download the latest Windows package."
+                Text = "Install the update now, or open the release page to update manually."
             };
 
             var releaseLink = new LinkLabel
@@ -55,20 +55,29 @@ namespace DropResize
             };
             downloadLink.LinkClicked += (sender, args) => OpenUrl(updateInfo.DownloadUrl);
 
-            var closeButton = new Button
+            var installButton = new Button
             {
                 DialogResult = DialogResult.OK,
-                Location = new Point(320, 128),
+                Location = new Point(214, 142),
+                Size = new Size(96, 30),
+                Text = "Install"
+            };
+
+            var closeButton = new Button
+            {
+                DialogResult = DialogResult.Cancel,
+                Location = new Point(320, 142),
                 Size = new Size(92, 30),
-                Text = "Close"
+                Text = "Later"
             };
 
             Controls.Add(titleLabel);
             Controls.Add(messageLabel);
             Controls.Add(releaseLink);
             Controls.Add(downloadLink);
+            Controls.Add(installButton);
             Controls.Add(closeButton);
-            AcceptButton = closeButton;
+            AcceptButton = installButton;
             CancelButton = closeButton;
         }
 

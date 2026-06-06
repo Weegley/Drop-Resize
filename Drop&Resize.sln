@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Drop&Resize", "Drop&Resize.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Drop&Resize.Worker", "Drop&Resize.Worker\Drop&Resize.Worker.csproj", "{9C1C7A94-2269-4D1E-B629-1B50B4380A89}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Drop&Resize.Updater", "Drop&Resize.Updater\Drop&Resize.Updater.csproj", "{9E0F44AF-625D-4A37-87F8-A082B7B6D4A4}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,10 @@ Global
 		{9C1C7A94-2269-4D1E-B629-1B50B4380A89}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{9C1C7A94-2269-4D1E-B629-1B50B4380A89}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{9C1C7A94-2269-4D1E-B629-1B50B4380A89}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9E0F44AF-625D-4A37-87F8-A082B7B6D4A4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9E0F44AF-625D-4A37-87F8-A082B7B6D4A4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9E0F44AF-625D-4A37-87F8-A082B7B6D4A4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9E0F44AF-625D-4A37-87F8-A082B7B6D4A4}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
