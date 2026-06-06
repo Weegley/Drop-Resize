@@ -31,6 +31,7 @@ namespace DropResize
         private TempBatchManager currentBatchFolder;
         private int currentBatchId;
         private ImageCardControl dragStartCard;
+        private ImageCardControl focusedCard;
         private Point dragStartPoint;
         private bool marqueeSelecting;
         private bool marqueeAdditive;
@@ -82,6 +83,16 @@ namespace DropResize
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
+            if (MoveFocusedCard(keyData))
+            {
+                return true;
+            }
+
+            if (keyData == Keys.Delete && RemoveSelectedCards())
+            {
+                return true;
+            }
+
             if (keyData == (Keys.Control | Keys.A))
             {
                 SelectAllResultCards();
@@ -736,6 +747,7 @@ namespace DropResize
                 DisposeResultThumbnail(ignored);
             }
 
+            ClearFocusedCard();
             selectedCards.Clear();
             foreach (Control control in cardsPanel.Controls.Cast<Control>().Where(c => c != instructionLabel).ToList())
             {
@@ -948,7 +960,14 @@ namespace DropResize
         private void ImageCard_MouseDown(object sender, MouseEventArgs e)
         {
             var card = (ImageCardControl)sender;
-            if (!card.Result.Success || e.Button != MouseButtons.Left)
+            if (e.Button != MouseButtons.Left)
+            {
+                return;
+            }
+
+            SetFocusedCard(card, !card.Result.Success);
+
+            if (!card.Result.Success)
             {
                 return;
             }
@@ -1003,6 +1022,7 @@ namespace DropResize
             ClearSelection();
             selectedCards.Add(card);
             card.IsSelected = true;
+            SetFocusedCard(card, false);
         }
 
         private void ClearSelection()
@@ -1013,6 +1033,211 @@ namespace DropResize
             }
 
             selectedCards.Clear();
+        }
+
+        private bool RemoveSelectedCards()
+        {
+            var allCards = GetResultCards();
+            var cardsToRemove = selectedCards
+                .Where(card => card.Parent == cardsPanel)
+                .ToList();
+
+            if (cardsToRemove.Count == 0 && focusedCard != null && focusedCard.Parent == cardsPanel)
+            {
+                cardsToRemove.Add(focusedCard);
+            }
+
+            if (cardsToRemove.Count == 0)
+            {
+                return false;
+            }
+
+            var focusIndex = GetReplacementFocusIndex(allCards, cardsToRemove);
+            dragStartCard = null;
+            marqueeSelecting = false;
+            marqueeScrollTimer.Stop();
+            cardsPanel.SelectionRectangle = Rectangle.Empty;
+            ClearFocusedCard();
+
+            cardsPanel.SuspendLayout();
+            foreach (var card in cardsToRemove)
+            {
+                cardsPanel.Controls.Remove(card);
+                card.Dispose();
+            }
+
+            selectedCards.Clear();
+
+            var remainingCards = GetResultCards();
+            if (remainingCards.Count > 0)
+            {
+                SetFocusedCard(remainingCards[Math.Min(focusIndex, remainingCards.Count - 1)], true);
+            }
+
+            if (!cardsPanel.Controls.OfType<ImageCardControl>().Any() && instructionLabel.Parent != cardsPanel)
+            {
+                cardsPanel.Controls.Add(instructionLabel);
+            }
+
+            cardsPanel.ResumeLayout();
+            UpdateInstructionLayout();
+            return true;
+        }
+
+        private bool MoveFocusedCard(Keys keyData)
+        {
+            if (keyData != Keys.Left && keyData != Keys.Right && keyData != Keys.Up && keyData != Keys.Down)
+            {
+                return false;
+            }
+
+            var cards = GetResultCards();
+            if (cards.Count == 0)
+            {
+                ClearFocusedCard();
+                return false;
+            }
+
+            if (focusedCard == null)
+            {
+                return false;
+            }
+
+            if (focusedCard.Parent != cardsPanel)
+            {
+                ClearFocusedCard();
+                return false;
+            }
+
+            ImageCardControl nextCard = null;
+            var index = cards.IndexOf(focusedCard);
+            if (keyData == Keys.Left && index > 0)
+            {
+                nextCard = cards[index - 1];
+            }
+            else if (keyData == Keys.Right && index >= 0 && index < cards.Count - 1)
+            {
+                nextCard = cards[index + 1];
+            }
+            else if (keyData == Keys.Up)
+            {
+                nextCard = FindVerticalNavigationCard(cards, focusedCard, true);
+            }
+            else if (keyData == Keys.Down)
+            {
+                nextCard = FindVerticalNavigationCard(cards, focusedCard, false);
+            }
+
+            if (nextCard == null)
+            {
+                return true;
+            }
+
+            SetFocusedCard(nextCard, true);
+            return true;
+        }
+
+        private ImageCardControl FindVerticalNavigationCard(
+            List<ImageCardControl> cards,
+            ImageCardControl currentCard,
+            bool moveUp)
+        {
+            var currentCenter = GetCardCenter(currentCard);
+            var candidates = cards
+                .Where(card => card != currentCard)
+                .Select(card => new
+                {
+                    Card = card,
+                    Center = GetCardCenter(card)
+                })
+                .Where(item => moveUp ? item.Center.Y < currentCenter.Y : item.Center.Y > currentCenter.Y);
+
+            if (moveUp)
+            {
+                return candidates
+                    .OrderByDescending(item => item.Center.Y)
+                    .ThenBy(item => Math.Abs(item.Center.X - currentCenter.X))
+                    .Select(item => item.Card)
+                    .FirstOrDefault();
+            }
+
+            return candidates
+                .OrderBy(item => item.Center.Y)
+                .ThenBy(item => Math.Abs(item.Center.X - currentCenter.X))
+                .Select(item => item.Card)
+                .FirstOrDefault();
+        }
+
+        private static Point GetCardCenter(Control card)
+        {
+            return new Point(card.Left + card.Width / 2, card.Top + card.Height / 2);
+        }
+
+        private List<ImageCardControl> GetResultCards()
+        {
+            return cardsPanel.Controls.OfType<ImageCardControl>().ToList();
+        }
+
+        private static int GetReplacementFocusIndex(
+            List<ImageCardControl> allCards,
+            List<ImageCardControl> removedCards)
+        {
+            var indexes = removedCards
+                .Select(card => allCards.IndexOf(card))
+                .Where(index => index >= 0)
+                .OrderBy(index => index)
+                .ToList();
+
+            if (indexes.Count == 0)
+            {
+                return 0;
+            }
+
+            return indexes.Last() - indexes.Count + 1;
+        }
+
+        private void SetFocusedCard(ImageCardControl card, bool selectFocusedCard)
+        {
+            if (focusedCard != null && focusedCard != card)
+            {
+                focusedCard.IsKeyboardFocused = false;
+            }
+
+            focusedCard = card != null && card.Parent == cardsPanel ? card : null;
+
+            if (focusedCard == null)
+            {
+                if (selectFocusedCard)
+                {
+                    ClearSelection();
+                }
+
+                return;
+            }
+
+            focusedCard.IsKeyboardFocused = true;
+            cardsPanel.ScrollControlIntoView(focusedCard);
+
+            if (!selectFocusedCard)
+            {
+                return;
+            }
+
+            ClearSelection();
+            if (focusedCard.Result.Success)
+            {
+                selectedCards.Add(focusedCard);
+                focusedCard.IsSelected = true;
+            }
+        }
+
+        private void ClearFocusedCard()
+        {
+            if (focusedCard != null)
+            {
+                focusedCard.IsKeyboardFocused = false;
+                focusedCard = null;
+            }
         }
 
         private void SelectAllResultCards()

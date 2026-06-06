@@ -12,6 +12,7 @@ namespace DropResize
         private readonly Label detailsLabel;
         private readonly Label statusLabel;
         private bool isSelected;
+        private bool isKeyboardFocused;
 
         public ImageCardControl(ResizeResult result)
         {
@@ -20,7 +21,6 @@ namespace DropResize
             Height = 132;
             Margin = new Padding(0, 0, 8, 8);
             BackColor = Color.White;
-            BorderStyle = BorderStyle.FixedSingle;
 
             thumbnailBox = new PictureBox
             {
@@ -77,6 +77,35 @@ namespace DropResize
             {
                 isSelected = value;
                 BackColor = isSelected ? Color.FromArgb(229, 243, 255) : Color.White;
+            }
+        }
+
+        public bool IsKeyboardFocused
+        {
+            get { return isKeyboardFocused; }
+            set
+            {
+                isKeyboardFocused = value;
+                Invalidate();
+            }
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+
+            var color = isKeyboardFocused ? Color.FromArgb(0, 120, 215) : Color.FromArgb(180, 180, 180);
+            var width = isKeyboardFocused ? 2 : 1;
+
+            using (var pen = new Pen(color, width))
+            {
+                var offset = width / 2;
+                e.Graphics.DrawRectangle(
+                    pen,
+                    offset,
+                    offset,
+                    Width - width,
+                    Height - width);
             }
         }
 
