@@ -89,7 +89,30 @@ Drop&Resize focuses on speed and simplicity. It does not include image editing, 
 
 
 
+
 ## Changelog
+
+## v1.1.0.18
+
+### Changes
+
+- Clean up README by removing v1.1.0.15 changelog
+- Removed changelog entries for version 1.1.0.15 and cleaned up the README.
+- Update CHANGELOG.md
+- 
+- Delete changelog for version 1.1.0.15
+- Removed changelog entry for version 1.1.0.15.
+- Clean up CHANGELOG by removing v1.1.0.15 details
+- Removed details of version 1.1.0.15 from CHANGELOG.
+- Refactor changelog generation in workflow
+- Added Auto Update feature
+- Added arrows navigation on cards
+- Added deleting of cards by del.
+- Updated update dialog
+- New versioning scheme
+- Updated Workflow
+
+
 
 ## v1.0.0.5
 
