@@ -1,0 +1,123 @@
+name: Build & Release Drop&Resize
+
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '**/*.md'
+      - '**/*.txt'
+      - 'LICENSE'
+      - 'LICENSE.txt'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract version from project files
+        id: get_version
+        shell: pwsh
+        run: |
+          $version = $null
+          $csproj = Get-ChildItem -Path . -Filter *.csproj -Recurse | Where-Object { $_.FullName -notmatch '\\bin\\|\\obj\\' } | Select-Object -First 1
+          if ($csproj) {
+            [xml]$xml = Get-Content $csproj.FullName
+            $version = $xml.Project.PropertyGroup.AssemblyVersion | Select-Object -First 1
+          }
+          if (-not $version) {
+            $assinfo = Get-ChildItem -Path . -Filter AssemblyInfo.cs -Recurse | Where-Object { $_.FullName -notmatch '\\bin\\|\\obj\\' } | Select-Object -First 1
+            if ($assinfo) {
+              $match = Select-String -Path $assinfo.FullName -Pattern 'AssemblyVersion\("([0-9]+(\.[0-9]+){0,3})"\)' | Select-Object -First 1
+              if ($match -and $match.Matches.Count -gt 0) {
+                $version = $match.Matches[0].Groups[1].Value
+              }
+            }
+          }
+          if (-not $version) { $version = "0.1.0" }
+          $version = $version.ToString().Trim()
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "Project version: $version"
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v2
+        with:
+          msbuild-architecture: x86
+
+      - name: Restore NuGet packages
+        run: nuget restore "Drop&Resize.sln"
+
+      - name: Build solution
+        run: msbuild "Drop&Resize.sln" /p:Configuration=Release /p:Platform="Any CPU"
+
+      - name: Archive build output
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path output\DropResize | Out-Null
+          Copy-Item -Path "bin\Release\*" -Destination output\DropResize -Recurse -Force
+          Compress-Archive -Path output\DropResize -DestinationPath DropResize-Windows.zip -Force
+
+      - name: Upload artifact to Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: DropResize-Windows
+          path: DropResize-Windows.zip
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: DropResize-Windows
+
+      - name: Create tag if not exists
+        run: |
+          TAG="v${{ needs.build.outputs.version }}"
+          if git ls-remote --tags origin | grep "refs/tags/$TAG$"; then
+            echo "Tag already exists: $TAG"
+          else
+            git config user.name "github-actions"
+            git config user.email "github-actions@github.com"
+            git tag "$TAG"
+            git push origin "$TAG"
+          fi
+
+      - name: Read changelog for this version
+        id: changelog
+        run: |
+          VERSION="v${{ needs.build.outputs.version }}"
+          if [ -f CHANGELOG.md ]; then
+            SECTION=$(awk "/^##[[:space:]]*\\[?$VERSION\\]?/ {flag=1} /^##[[:space:]]+/ && !/^##[[:space:]]*\\[?$VERSION\\]?/ {flag=0} flag" CHANGELOG.md | sed '/^[[:space:]]*$/d')
+          fi
+          if [ -z "$SECTION" ]; then
+            SECTION="Automated Drop&Resize release for $VERSION."
+          fi
+          echo "$SECTION"
+          echo "body<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$SECTION" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.build.outputs.version }}
+          name: Drop&Resize v${{ needs.build.outputs.version }}
+          body: ${{ steps.changelog.outputs.body }}
+          files: DropResize-Windows.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
