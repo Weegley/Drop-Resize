@@ -5,6 +5,9 @@ Drop&Resize is a small Windows utility for quickly resizing image files.
 
 It is designed for a simple workflow: choose a resize profile, drag original images into the window, and drag the resized results back out to Explorer, Outlook, or another application.
 
+## Note
+- This is small open-source program which does not have digital signature. Windows SmartScreen may and will show relevant warning. This warning can be safely ignored.
+
 ## Features
 
 - Drag and drop images from Windows Explorer
