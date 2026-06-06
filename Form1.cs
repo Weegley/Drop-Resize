@@ -74,7 +74,7 @@ namespace DropResize
                 updateCheckCancellation.Cancel();
             }
 
-            CleanupCurrentBatchFolder();
+            DeleteCurrentBatchFolder();
             TempBatchManager.DeleteRoot();
 
             base.OnFormClosing(e);
@@ -754,7 +754,11 @@ namespace DropResize
         private void CleanupCurrentBatchFolder()
         {
             ClearCurrentBatch();
+            DeleteCurrentBatchFolder();
+        }
 
+        private void DeleteCurrentBatchFolder()
+        {
             if (currentBatchFolder != null)
             {
                 currentBatchFolder.Delete();
