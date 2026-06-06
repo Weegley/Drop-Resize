@@ -5,6 +5,7 @@
 - Test release to check workflow
 - docs: update changelog [bot]
 - Update workflow to auto generate/update Changelog and update README
+- Added updates checking
 
 ## v1.0.0.1
 
