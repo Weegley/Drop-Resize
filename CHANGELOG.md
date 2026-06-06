@@ -1,3 +1,13 @@
+## v1.0.0.3
+
+### Changes
+
+- Added removal of working folder in %TEMP%
+- Update README.md
+- Update CHANGELOG with new updates checking
+- docs: update changelog [bot]
+- Remove v1.0.0.2 changelog entries
+
 ## v1.0.0.2
 
 ### Changes
