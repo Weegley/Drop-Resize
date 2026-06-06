@@ -116,11 +116,65 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
           name: DropResize-Windows
+
+      - name: Generate changelog section when missing
+        run: |
+          VERSION="v${{ needs.build.outputs.version }}"
+
+          if awk "/^##[[:space:]]*\\[?$VERSION\\]?/ {found=1} END {exit found ? 0 : 1}" CHANGELOG.md; then
+            echo "CHANGELOG.md already contains $VERSION."
+            exit 0
+          fi
+
+          PREVIOUS_TAG=$(git tag --sort=-v:refname | grep -v "^$VERSION$" | head -n 1)
+          if [ -n "$PREVIOUS_TAG" ]; then
+            RANGE="$PREVIOUS_TAG..HEAD"
+          else
+            RANGE="HEAD"
+          fi
+
+          COMMITS=$(git log "$RANGE" --pretty=format:"- %s" --no-merges | grep -v "^- docs: append changelog to README \\[bot\\]$" || true)
+          if [ -z "$COMMITS" ]; then
+            COMMITS="- Release $VERSION."
+          fi
+
+          {
+            printf "## %s\n\n" "$VERSION"
+            printf "### Changes\n\n"
+            printf "%s\n\n" "$COMMITS"
+            cat CHANGELOG.md
+          } > CHANGELOG.tmp
+          mv CHANGELOG.tmp CHANGELOG.md
+
+      - name: Remove old Changelog section from README.md
+        run: |
+          awk '/^## Changelog/{exit} {print}' README.md > README.tmp
+          mv README.tmp README.md
+
+      - name: Append CHANGELOG.md to README.md
+        run: |
+          printf "\n## Changelog\n\n" >> README.md
+          cat CHANGELOG.md >> README.md
+
+      - name: Commit and push updated changelog files
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add CHANGELOG.md README.md
+
+          if git diff --cached --quiet; then
+            echo "Changelog files are already up to date."
+          else
+            git commit -m "docs: update changelog [bot]"
+            git push
+          fi
 
       - name: Create tag if it does not exist
         run: |
@@ -135,12 +189,27 @@ jobs:
             git push origin "$TAG"
           fi
 
+      - name: Read changelog for this version
+        id: changelog
+        run: |
+          VERSION="v${{ needs.build.outputs.version }}"
+          SECTION=$(awk "/^##[[:space:]]*\\[?$VERSION\\]?/ {flag=1} /^##[[:space:]]+/ && !/^##[[:space:]]*\\[?$VERSION\\]?/ {flag=0} flag" CHANGELOG.md | sed '/^[[:space:]]*$/d')
+
+          if [ -z "$SECTION" ]; then
+            SECTION="Drop&Resize release $VERSION."
+          fi
+
+          echo "$SECTION"
+          echo "body<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$SECTION" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.build.outputs.version }}
           name: "Drop&Resize v${{ needs.build.outputs.version }}"
-          body: "Automated Drop&Resize release."
+          body: ${{ steps.changelog.outputs.body }}
           files: DropResize-Windows.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
