@@ -76,19 +76,20 @@ Drop&Resize focuses on speed and simplicity. It does not include image editing, 
 <img  src="https://github.com/user-attachments/assets/12c21104-5e31-40fb-8398-6c1b2b257d51" /> <img src="https://github.com/user-attachments/assets/f6d2823a-c54f-4a1d-8bb7-dccd0e0c820f" /> <img  src="https://github.com/user-attachments/assets/6ec8dd74-f395-4d6d-89f2-682a5ae29e9c" />
 
 
+## Code signing policy
 
+Free code signing provided by SignPath.io, certificate by SignPath Foundation.
 
+### Team roles
 
+Committers and reviewers: Sergey Samsonov / Weegley  
+Approvers: Sergey Samsonov / Weegley
 
+### Privacy policy
 
+This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.
 
-
-
-
-
-
-
-
+Drop&Resize checks for updates only when the update-checking feature is used/enabled.
 
 
 ## Changelog
