@@ -1,3 +1,11 @@
+## v1.0.0.2
+
+### Changes
+
+- Test release to check workflow
+- docs: update changelog [bot]
+- Update workflow to auto generate/update Changelog and update README
+
 ## v1.0.0.1
 
 ### Settings and profiles location
