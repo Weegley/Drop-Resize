@@ -13,10 +13,13 @@ namespace DropResize
 
         public ProfileStore()
         {
-            var folder = AppDomain.CurrentDomain.BaseDirectory;
+            var folder = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "Drop&Resize");
             Directory.CreateDirectory(folder);
             filePath = Path.Combine(folder, "profiles.xml");
             settingsPath = Path.Combine(folder, "settings.xml");
+            MigrateLegacyFiles();
         }
 
         public List<ResizeProfile> Load()
@@ -122,6 +125,30 @@ namespace DropResize
             }
 
             return result;
+        }
+
+        private void MigrateLegacyFiles()
+        {
+            var legacyFolder = AppDomain.CurrentDomain.BaseDirectory;
+            CopyLegacyFile(Path.Combine(legacyFolder, "profiles.xml"), filePath);
+            CopyLegacyFile(Path.Combine(legacyFolder, "settings.xml"), settingsPath);
+        }
+
+        private static void CopyLegacyFile(string sourcePath, string targetPath)
+        {
+            if (!File.Exists(sourcePath) || File.Exists(targetPath))
+            {
+                return;
+            }
+
+            try
+            {
+                File.Copy(sourcePath, targetPath);
+            }
+            catch
+            {
+                // Legacy migration is best-effort; defaults are still available.
+            }
         }
     }
 
