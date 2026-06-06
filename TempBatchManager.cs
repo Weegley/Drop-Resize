@@ -12,6 +12,41 @@ namespace DropResize
 
         public string BatchFolder { get; private set; }
 
+        public void Delete()
+        {
+            if (string.IsNullOrEmpty(BatchFolder) || !Directory.Exists(BatchFolder))
+            {
+                return;
+            }
+
+            try
+            {
+                Directory.Delete(BatchFolder, true);
+            }
+            catch
+            {
+                // Temporary output cleanup should not prevent the app from closing.
+            }
+        }
+
+        public static void DeleteRoot()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "Drop&Resize");
+            if (!Directory.Exists(root))
+            {
+                return;
+            }
+
+            try
+            {
+                Directory.Delete(root, true);
+            }
+            catch
+            {
+                // Leftover temporary files are non-fatal and may be locked by drag targets.
+            }
+        }
+
         public static TempBatchManager Create()
         {
             var root = Path.Combine(Path.GetTempPath(), "Drop&Resize");

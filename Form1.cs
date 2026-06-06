@@ -74,6 +74,9 @@ namespace DropResize
                 updateCheckCancellation.Cancel();
             }
 
+            CleanupCurrentBatchFolder();
+            TempBatchManager.DeleteRoot();
+
             base.OnFormClosing(e);
         }
 
@@ -474,7 +477,7 @@ namespace DropResize
             await Task.Delay(75);
 
             var batchId = ++currentBatchId;
-            ClearCurrentBatch();
+            CleanupCurrentBatchFolder();
 
             currentBatchFolder = TempBatchManager.Create();
             currentCancellation = new CancellationTokenSource();
@@ -746,6 +749,17 @@ namespace DropResize
             }
 
             UpdateInstructionLayout();
+        }
+
+        private void CleanupCurrentBatchFolder()
+        {
+            ClearCurrentBatch();
+
+            if (currentBatchFolder != null)
+            {
+                currentBatchFolder.Delete();
+                currentBatchFolder = null;
+            }
         }
 
         private void QueueResult(ResizeResult result, int batchId)
