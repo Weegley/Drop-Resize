@@ -79,7 +79,18 @@ Drop&Resize focuses on speed and simplicity. It does not include image editing, 
 
 
 
+
 ## Changelog
+
+## v1.0.0.3
+
+### Changes
+
+- Added removal of working folder in %TEMP%
+- Update README.md
+- Update CHANGELOG with new updates checking
+- docs: update changelog [bot]
+- Remove v1.0.0.2 changelog entries
 
 ## v1.0.0.2
 
@@ -89,7 +100,7 @@ Drop&Resize focuses on speed and simplicity. It does not include image editing, 
 - docs: update changelog [bot]
 - Update workflow to auto generate/update Changelog and update README
 - Added updates checking
-  
+
 ## v1.0.0.1
 
 ### Settings and profiles location
