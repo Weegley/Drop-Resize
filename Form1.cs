@@ -17,13 +17,17 @@ namespace DropResize
     public partial class Form1 : Form
     {
         private readonly ProfileStore profileStore = new ProfileStore();
+        private readonly UpdateCheckService updateCheckService = new UpdateCheckService();
         private readonly List<ImageCardControl> selectedCards = new List<ImageCardControl>();
         private readonly ConcurrentQueue<ResizeResult> pendingResults = new ConcurrentQueue<ResizeResult>();
 
         private List<ResizeProfile> profiles;
         private CancellationTokenSource currentCancellation;
+        private CancellationTokenSource updateCheckCancellation;
         private Process currentWorkerProcess;
         private bool isProcessing;
+        private bool updateCheckInProgress;
+        private bool suppressUpdateCheckSettingSave;
         private TempBatchManager currentBatchFolder;
         private int currentBatchId;
         private ImageCardControl dragStartCard;
@@ -45,6 +49,16 @@ namespace DropResize
             RestoreWindowSettings();
         }
 
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+
+            if (checkUpdatesCheckBox.Checked)
+            {
+                BeginUpdateCheck();
+            }
+        }
+
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             SaveWindowSettings();
@@ -53,6 +67,11 @@ namespace DropResize
             {
                 currentCancellation.Cancel();
                 KillCurrentWorker();
+            }
+
+            if (updateCheckCancellation != null)
+            {
+                updateCheckCancellation.Cancel();
             }
 
             base.OnFormClosing(e);
@@ -119,6 +138,10 @@ namespace DropResize
             customWorkerCount.Maximum = Math.Max(1, Environment.ProcessorCount * 2);
             customWorkerCount.Value = Math.Max(1, Environment.ProcessorCount - 1);
             customWorkerCount.Enabled = false;
+
+            suppressUpdateCheckSettingSave = true;
+            checkUpdatesCheckBox.Checked = Properties.Settings.Default.CheckForUpdates;
+            suppressUpdateCheckSettingSave = false;
 
             processingOverlay.BackColor = Color.FromArgb(235, 255, 255, 255);
             processingOverlay.BringToFront();
@@ -258,6 +281,26 @@ namespace DropResize
             customWorkerCount.Enabled = workerComboBox.SelectedItem.ToString() == "Custom";
         }
 
+        private void CheckUpdatesCheckBox_CheckedChanged(object sender, EventArgs e)
+        {
+            if (suppressUpdateCheckSettingSave)
+            {
+                return;
+            }
+
+            Properties.Settings.Default.CheckForUpdates = checkUpdatesCheckBox.Checked;
+            Properties.Settings.Default.Save();
+
+            if (checkUpdatesCheckBox.Checked)
+            {
+                BeginUpdateCheck();
+            }
+            else if (updateCheckCancellation != null)
+            {
+                updateCheckCancellation.Cancel();
+            }
+        }
+
         private void ProfileComboBox_SelectedIndexChanged(object sender, EventArgs e)
         {
             var selected = profileComboBox.SelectedItem as ResizeProfile;
@@ -308,6 +351,72 @@ namespace DropResize
             }
 
             await StartProcessingAsync(inputFiles);
+        }
+
+        private void BeginUpdateCheck()
+        {
+            if (updateCheckInProgress)
+            {
+                return;
+            }
+
+            if (!checkUpdatesCheckBox.Checked)
+            {
+                return;
+            }
+
+            if (updateCheckCancellation != null)
+            {
+                updateCheckCancellation.Cancel();
+            }
+
+            updateCheckCancellation = new CancellationTokenSource();
+            var ignored = CheckForUpdatesAsync(updateCheckCancellation.Token);
+        }
+
+        private async Task CheckForUpdatesAsync(CancellationToken cancellationToken)
+        {
+            updateCheckInProgress = true;
+
+            try
+            {
+                var update = await updateCheckService.CheckForUpdateAsync(cancellationToken);
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                if (update == null)
+                {
+                    return;
+                }
+
+                SetStatus("Update available: Drop&Resize " + update.VersionText + ".");
+                using (var dialog = new UpdateAvailableDialog(update))
+                {
+                    dialog.ShowDialog(this);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                if (!cancellationToken.IsCancellationRequested)
+                {
+                    SetStatus("Update check failed: " + ex.Message);
+                }
+            }
+            finally
+            {
+                if (updateCheckCancellation != null && updateCheckCancellation.Token == cancellationToken)
+                {
+                    updateCheckCancellation.Dispose();
+                    updateCheckCancellation = null;
+                }
+
+                updateCheckInProgress = false;
+            }
         }
 
         private void Form1_DragEnter(object sender, DragEventArgs e)

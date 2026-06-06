@@ -32,6 +32,7 @@ namespace DropResize
             this.customWorkerCount = new System.Windows.Forms.NumericUpDown();
             this.workersSeparatorLabel = new System.Windows.Forms.Label();
             this.resizeAgainButton = new System.Windows.Forms.Button();
+            this.checkUpdatesCheckBox = new System.Windows.Forms.CheckBox();
             this.cardsPanel = new DropResize.SelectableFlowLayoutPanel();
             this.instructionLabel = new System.Windows.Forms.Label();
             this.statusLabel = new System.Windows.Forms.Label();
@@ -85,11 +86,12 @@ namespace DropResize
             this.sidebarPanel.Controls.Add(this.customWorkerCount, 0, 9);
             this.sidebarPanel.Controls.Add(this.workersSeparatorLabel, 0, 10);
             this.sidebarPanel.Controls.Add(this.resizeAgainButton, 0, 11);
+            this.sidebarPanel.Controls.Add(this.checkUpdatesCheckBox, 0, 12);
             this.sidebarPanel.Dock = System.Windows.Forms.DockStyle.Fill;
             this.sidebarPanel.Location = new System.Drawing.Point(18, 18);
             this.sidebarPanel.Margin = new System.Windows.Forms.Padding(0, 0, 18, 0);
             this.sidebarPanel.Name = "sidebarPanel";
-            this.sidebarPanel.RowCount = 13;
+            this.sidebarPanel.RowCount = 14;
             this.rootLayout.SetRowSpan(this.sidebarPanel, 2);
             this.sidebarPanel.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 37F));
             this.sidebarPanel.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 49F));
@@ -103,6 +105,7 @@ namespace DropResize
             this.sidebarPanel.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 49F));
             this.sidebarPanel.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 28F));
             this.sidebarPanel.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 46F));
+            this.sidebarPanel.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 38F));
             this.sidebarPanel.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
             this.sidebarPanel.Size = new System.Drawing.Size(267, 1010);
             this.sidebarPanel.TabIndex = 0;
@@ -260,7 +263,19 @@ namespace DropResize
             this.resizeAgainButton.Text = "Resize Again";
             this.resizeAgainButton.UseVisualStyleBackColor = true;
             this.resizeAgainButton.Click += new System.EventHandler(this.ResizeAgain_Click);
-            // 
+            //
+            // checkUpdatesCheckBox
+            //
+            this.checkUpdatesCheckBox.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.checkUpdatesCheckBox.Location = new System.Drawing.Point(0, 510);
+            this.checkUpdatesCheckBox.Margin = new System.Windows.Forms.Padding(0, 3, 0, 3);
+            this.checkUpdatesCheckBox.Name = "checkUpdatesCheckBox";
+            this.checkUpdatesCheckBox.Size = new System.Drawing.Size(267, 32);
+            this.checkUpdatesCheckBox.TabIndex = 12;
+            this.checkUpdatesCheckBox.Text = "Check for updates";
+            this.checkUpdatesCheckBox.UseVisualStyleBackColor = true;
+            this.checkUpdatesCheckBox.CheckedChanged += new System.EventHandler(this.CheckUpdatesCheckBox_CheckedChanged);
+            //
             // cardsPanel
             // 
             this.cardsPanel.AllowDrop = true;
@@ -406,6 +421,7 @@ namespace DropResize
         private System.Windows.Forms.NumericUpDown customWorkerCount;
         private System.Windows.Forms.Label workersSeparatorLabel;
         private System.Windows.Forms.Button resizeAgainButton;
+        private System.Windows.Forms.CheckBox checkUpdatesCheckBox;
         private SelectableFlowLayoutPanel cardsPanel;
         private System.Windows.Forms.Label instructionLabel;
         private System.Windows.Forms.Label statusLabel;

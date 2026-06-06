@@ -74,6 +74,11 @@
       <SubType>Component</SubType>
     </Compile>
     <Compile Include="TempBatchManager.cs" />
+    <Compile Include="UpdateAvailableDialog.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="UpdateCheckService.cs" />
+    <Compile Include="UpdateInfo.cs" />
     <Compile Include="WorkerContracts.cs" />
     <EmbeddedResource Include="Form1.resx">
       <DependentUpon>Form1.cs</DependentUpon>

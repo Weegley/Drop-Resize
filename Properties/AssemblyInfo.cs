@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 // набора атрибутов. Измените значения этих атрибутов для изменения сведений,
 // связанных со сборкой.
 [assembly: AssemblyTitle("Drop&Resize")]
-[assembly: AssemblyDescription("")]
+[assembly: AssemblyDescription("Simple image resizer with Drag&Drop")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("Sergei Samsonov")]
 [assembly: AssemblyProduct("Drop&Resize")]
