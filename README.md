@@ -72,7 +72,11 @@ The project targets .NET Framework 4.8 and uses standard .NET / Windows Forms co
 Drop&Resize focuses on speed and simplicity. It does not include image editing, history, project management, cloud upload, RAW/WebP/HEIC/AVIF support, or GPU acceleration.
 
 ## Screenshots:
-<img src="https://github.com/user-attachments/assets/3268b98f-28ec-45ba-a581-8afc6fc9398a" /><img src="https://github.com/user-attachments/assets/7a62882f-e561-4ca8-9556-6501c1f0f389" /><img src="https://github.com/user-attachments/assets/b9582c91-da7e-4042-a0ed-bdb131d39d96" />
+<img  src="https://github.com/user-attachments/assets/12c21104-5e31-40fb-8398-6c1b2b257d51" /> <img src="https://github.com/user-attachments/assets/f6d2823a-c54f-4a1d-8bb7-dccd0e0c820f" /> <img  src="https://github.com/user-attachments/assets/6ec8dd74-f395-4d6d-89f2-682a5ae29e9c" />
+
+
+
+
 
 
 
