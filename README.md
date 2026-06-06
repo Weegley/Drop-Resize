@@ -85,7 +85,16 @@ Drop&Resize focuses on speed and simplicity. It does not include image editing, 
 
 
 
+
 ## Changelog
+
+## v1.0.0.5
+
+### Changes
+
+- Add navigation within cards by arrow keys and deleting them wit del button
+- Update README with more screenshots
+- Update copyright year and name in LICENSE.txt
 
 ## v1.0.0.4
 
