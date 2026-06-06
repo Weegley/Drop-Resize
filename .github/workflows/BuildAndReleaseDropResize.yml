@@ -9,6 +9,9 @@ on:
     branches:
       - master
     paths-ignore:
+      - ".github/workflows/BuildAndReleaseDropResize.yml"
+      - "CHANGELOG.md"
+      - "README.md"
       - "**/*.md"
       - "**/*.txt"
       - "LICENSE"
