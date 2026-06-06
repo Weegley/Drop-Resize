@@ -80,7 +80,15 @@ Drop&Resize focuses on speed and simplicity. It does not include image editing, 
 
 
 
+
 ## Changelog
+
+## v1.0.0.4
+
+### Changes
+
+- update version
+- UI fix for clear exit
 
 ## v1.0.0.3
 

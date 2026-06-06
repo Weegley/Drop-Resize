@@ -1,3 +1,10 @@
+## v1.0.0.4
+
+### Changes
+
+- update version
+- UI fix for clear exit
+
 ## v1.0.0.3
 
 ### Changes
