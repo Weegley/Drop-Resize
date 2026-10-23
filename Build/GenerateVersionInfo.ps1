@@ -6,12 +6,15 @@ param(
     [string]$BaseVersion,
 
     [Parameter(Mandatory = $true)]
-    [string]$Revision
+    [string]$Revision,
+
+    [string]$Configuration = 'Debug'
 )
 
 $ErrorActionPreference = "Stop"
 
-$generatedPath = Join-Path $ProjectDir "Properties\VersionInfo.Generated.cs"
+$generatedFolder = Join-Path $ProjectDir "obj\$Configuration"
+$generatedPath = Join-Path $generatedFolder 'VersionInfo.Generated.cs'
 
 if (-not ($Revision -match '^\d+$')) {
     throw "Revision must be a non-negative integer."
@@ -26,5 +29,10 @@ using System.Reflection;
 [assembly: AssemblyInformationalVersion("$version")]
 "@
 
-Set-Content -LiteralPath $generatedPath -Value $content -Encoding ASCII
+# Keep generated versions out of source control and preserve timestamps on unchanged builds.
+if (-not (Test-Path -LiteralPath $generatedPath) -or
+    (Get-Content -LiteralPath $generatedPath -Raw).TrimEnd() -ne $content.TrimEnd()) {
+    [IO.Directory]::CreateDirectory($generatedFolder) | Out-Null
+    Set-Content -LiteralPath $generatedPath -Value $content -Encoding ASCII
+}
 Write-Host "Generated Drop&Resize version $version"

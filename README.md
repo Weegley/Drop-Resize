@@ -5,9 +5,6 @@ Drop&Resize is a small Windows utility for quickly resizing image files.
 
 It is designed for a simple workflow: choose a resize profile, drag original images into the window, and drag the resized results back out to Explorer, Outlook, or another application.
 
-## Note
-- This is small open-source program which does not have digital signature. Windows SmartScreen may and will show relevant warning. This warning can be safely ignored.
-
 ## Features
 
 - Drag and drop images from Windows Explorer
@@ -18,7 +15,7 @@ It is designed for a simple workflow: choose a resize profile, drag original ima
 - Resize profiles with custom width, height, JPEG quality, output format, suffix, and “do not enlarge” option
 - Built-in profiles can be edited or reset to defaults
 - Custom user profiles can be added, edited, and deleted
-- Multi-threaded processing with selectable worker count
+- Parallel image processing in separate worker processes with selectable worker count and memory-aware concurrency
 - Basic protection against dropping generated files back into the app
 
 ## Supported formats
@@ -59,8 +56,9 @@ Generated files are real temporary files, so standard Windows file drag-and-drop
 
 - `Drop&Resize` — main Windows Forms application
 - `Drop&Resize.Worker` — background worker executable used for image processing
+- `WorkerProcessPool.cs` — process scheduling, memory limits, progress, and cancellation
 - `ImageResizeService.cs` — image loading, resizing, and saving logic
-- `BatchProcessor.cs` — multi-threaded batch processing
+- `EmbeddedExecutableCache.cs` — atomic extraction and reuse of embedded tools
 - `ResizeProfile.cs` and `ProfileStore.cs` — profile model and storage
 - `ImageCardControl.cs` — result card UI
 - `TempBatchManager.cs` — temporary output batch folders
@@ -71,6 +69,12 @@ Open `Drop&Resize.sln` in Visual Studio and build the solution.
 
 The project targets .NET Framework 4.8 and uses standard .NET / Windows Forms components. No external NuGet packages are required for the current version.
 
+The worker selector controls the maximum number of simultaneous image processing processes. Auto leaves a logical CPU available on multi-core machines, with a ceiling of 32 processes. The actual count is also limited by batch size and an estimate of image memory requirements using half of currently available physical memory. Workers run at BelowNormal priority.
+
+Small previews are created during processing and sent to the UI with each result. Full output bitmaps are not retained by result cards.
+
+Run functional regression tests with `powershell -NoProfile -ExecutionPolicy Bypass -File .\Tests\RunTests.ps1`. The runner reports CPU load and restricts itself and its child processes to one available logical CPU. It does not run large-image performance tests.
+
 ## Notes
 
 Drop&Resize focuses on speed and simplicity. It does not include image editing, history, project management, cloud upload, RAW/WebP/HEIC/AVIF support, or GPU acceleration.
@@ -78,63 +82,12 @@ Drop&Resize focuses on speed and simplicity. It does not include image editing, 
 ## Screenshots:
 <img  src="https://github.com/user-attachments/assets/12c21104-5e31-40fb-8398-6c1b2b257d51" /> <img src="https://github.com/user-attachments/assets/f6d2823a-c54f-4a1d-8bb7-dccd0e0c820f" /> <img  src="https://github.com/user-attachments/assets/6ec8dd74-f395-4d6d-89f2-682a5ae29e9c" />
 
+## Changelog
 
-## v1.1.0.18
+See [CHANGELOG.md](CHANGELOG.md) and [GitHub Releases](https://github.com/Weegley/Drop-Resize/releases).
 
-### Changes
+## Release workflow
 
-- Added Auto Update feature
-- Added arrows navigation on cards
-- Added deleting of cards by del.
-- Updated update dialog
-- New versioning scheme
-- Updated Workflow
-- Refactor changelog generation in workflow
+Pushes to `master` build and test the exact pushed commit, verify the generated executable version, and publish `DropResize-Windows.zip`. Version numbers combine `BaseVersion` in the project file with the workflow run number. Manual runs on other branches build and test without publishing.
 
-
-
-## v1.0.0.5
-
-### Changes
-
-- Add navigation within cards by arrow keys and deleting them wit del button
-- Update README with more screenshots
-- Update copyright year and name in LICENSE.txt
-
-## v1.0.0.4
-
-### Changes
-
-- update version
-- UI fix for clear exit
-
-## v1.0.0.3
-
-### Changes
-
-- Added removal of working folder in %TEMP%
-- Update README.md
-- Update CHANGELOG with new updates checking
-- docs: update changelog [bot]
-- Remove v1.0.0.2 changelog entries
-
-## v1.0.0.2
-
-### Changes
-
-- Test release to check workflow
-- docs: update changelog [bot]
-- Update workflow to auto generate/update Changelog and update README
-- Added updates checking
-
-## v1.0.0.1
-
-### Settings and profiles location
-
-- Updated settings and profiles storage location to `%PROGRAMDATA%`.
-
-## v1.0.0.0
-
-### Initial release
-
-- Added the first public Drop&Resize release.
+The package includes only the application and license. Release notes combine the current curated changelog section with GitHub's generated notes. The workflow no longer creates documentation commits or appends duplicate history to this README. Existing tags must resolve to the tested source commit before a release can be updated.

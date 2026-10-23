@@ -1,240 +1,86 @@
 name: "Build & Release Drop&Resize"
 
-permissions:
-  contents: write
-
 on:
   workflow_dispatch:
   push:
-    branches:
-      - master
+    branches: [master]
     paths-ignore:
-      - ".github/workflows/BuildAndReleaseDropResize.yml"
-      - "CHANGELOG.md"
-      - "README.md"
       - "**/*.md"
       - "**/*.txt"
       - "LICENSE"
-      - "LICENSE.txt"
+
+permissions:
+  contents: write
+
+# Finish an in-flight release before starting another release from this branch.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: windows-2022
-
-    outputs:
-      version: ${{ steps.get_version.outputs.version }}
-
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up MSBuild
-        uses: microsoft/setup-msbuild@v2
+      - name: Check out the exact source being released
+        uses: actions/checkout@v7.0.1
         with:
-          msbuild-architecture: x86
-
-      - name: Restore NuGet packages
-        shell: pwsh
-        run: |
-          nuget restore "Drop&Resize.sln"
-
-      - name: Build solution
-        shell: pwsh
-        run: |
-          msbuild "Drop&Resize.sln" /p:Configuration=Release /p:Platform="Any CPU" /p:BuildRevision=${{ github.run_number }}
-
-      - name: Extract version from generated assembly info
-        id: get_version
-        shell: pwsh
-        run: |
-          $version = $null
-
-          $versionInfo = Get-ChildItem -Path . -Filter VersionInfo.Generated.cs -Recurse |
-            Where-Object { $_.FullName -notmatch '\\bin\\|\\obj\\' } |
-            Select-Object -First 1
-
-          if ($versionInfo) {
-            $content = Get-Content -Path $versionInfo.FullName -Raw
-
-            $fileVersionMatch = [regex]::Match($content, 'AssemblyFileVersion\("([^"]+)"\)')
-            $assemblyVersionMatch = [regex]::Match($content, 'AssemblyVersion\("([^"]+)"\)')
-
-            if ($fileVersionMatch.Success) {
-              $version = $fileVersionMatch.Groups[1].Value
-            }
-            elseif ($assemblyVersionMatch.Success) {
-              $version = $assemblyVersionMatch.Groups[1].Value
-            }
-          }
-
-          if (-not $version) {
-            throw "Generated version file was not found or does not contain a version."
-          }
-
-          $version = $version.Trim()
-          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          Write-Host "Project version: $version"
-
-      - name: Prepare release files
-        shell: pwsh
-        run: |
-          $source = "bin\Release"
-          $dest = "output\DropResize"
-
-          if (Test-Path $dest) {
-            Remove-Item $dest -Recurse -Force
-          }
-
-          New-Item -ItemType Directory -Force -Path $dest | Out-Null
-
-          robocopy $source $dest /E /XF *.pdb "Drop&Resize.exe.config" profiles.xml settings.xml | Out-Host
-
-          if ($LASTEXITCODE -le 7) {
-            exit 0
-          }
-
-          exit $LASTEXITCODE
-
-      - name: Create ZIP package
-        shell: pwsh
-        run: |
-          if (Test-Path "DropResize-Windows.zip") {
-            Remove-Item "DropResize-Windows.zip" -Force
-          }
-
-          Compress-Archive -Path "output\DropResize" -DestinationPath "DropResize-Windows.zip" -Force
-
-      - name: Upload artifact to Actions
-        uses: actions/upload-artifact@v4
-        with:
-          name: DropResize-Windows
-          path: DropResize-Windows.zip
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-
-    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/master'
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
-      - name: Download build artifact
-        uses: actions/download-artifact@v4
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v3
+        with:
+          msbuild-architecture: x64
+
+      - name: Build release binaries and tests
+        run: >-
+          msbuild "Drop&Resize.sln" /p:Configuration=Release /p:Platform="Any CPU"
+          /p:BuildRevision=${{ github.run_number }} /m /nologo
+
+      - name: Run regression tests
+        timeout-minutes: 5
+        run: .\Tests\RunTests.ps1 -Configuration Release -SkipBuild
+
+      - name: Verify version and create release package
+        id: package
+        run: |
+          $package = .\Build\PackageRelease.ps1 -ExpectedRevision ${{ github.run_number }}
+          "version=$($package.Version)" >> $env:GITHUB_OUTPUT
+          "archive=$($package.ArchivePath)" >> $env:GITHUB_OUTPUT
+          "notes=$($package.NotesPath)" >> $env:GITHUB_OUTPUT
+
+      - name: Upload tested package
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: DropResize-Windows
+          path: ${{ steps.package.outputs.archive }}
+          if-no-files-found: error
 
-      - name: Generate changelog section when missing
-        run: |
-          VERSION="v${{ needs.build.outputs.version }}"
-
-          if awk "/^##[[:space:]]*\\[?$VERSION\\]?/ {found=1} END {exit found ? 0 : 1}" CHANGELOG.md; then
-            echo "CHANGELOG.md already contains $VERSION."
-            exit 0
-          fi
-
-          PREVIOUS_TAG=$(git tag --sort=-v:refname | grep -v "^$VERSION$" | head -n 1)
-          if [ -n "$PREVIOUS_TAG" ]; then
-            RANGE="$PREVIOUS_TAG..HEAD"
-          else
-            RANGE="HEAD"
-          fi
-
-          COMMITS=$(
-            git log "$RANGE" --no-merges --pretty=format:'%B%x00' |
-            perl -0ne '
-              for my $line (split /\R/, $_) {
-                $line =~ s/^\s+|\s+$//g;
-                next if $line eq "";
-
-                next if $line eq "docs: update changelog [bot]";
-                next if $line eq "docs: append changelog to README [bot]";
-                next if $line =~ /^Co-authored-by:/i;
-                next if $line =~ /^Signed-off-by:/i;
-
-                $line =~ s/^[-*]\s*//;
-                print "- $line\n";
-              }
-            ' |
-            awk '!seen[$0]++'
-          )
-
-          if [ -z "$COMMITS" ]; then
-            COMMITS="- Release $VERSION."
-          fi
-
-          {
-            printf "## %s\n\n" "$VERSION"
-            printf "### Changes\n\n"
-            printf "%s\n\n" "$COMMITS"
-            cat CHANGELOG.md
-          } > CHANGELOG.tmp
-
-          mv CHANGELOG.tmp CHANGELOG.md
-
-      - name: Remove old Changelog section from README.md
-        run: |
-          awk '/^## Changelog/{exit} {print}' README.md > README.tmp
-          mv README.tmp README.md
-
-      - name: Append CHANGELOG.md to README.md
-        run: |
-          printf "\n## Changelog\n\n" >> README.md
-          cat CHANGELOG.md >> README.md
-
-      - name: Commit and push updated changelog files
-        run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git add CHANGELOG.md README.md
-
-          if git diff --cached --quiet; then
-            echo "Changelog files are already up to date."
-          else
-            git commit -m "docs: update changelog [bot]"
-            git push
-          fi
-
-      - name: Create tag if it does not exist
-        run: |
-          TAG="v${{ needs.build.outputs.version }}"
-
-          if git ls-remote --tags origin | grep -q "refs/tags/$TAG$"; then
-            echo "Tag already exists: $TAG"
-          else
-            git config user.name "github-actions"
-            git config user.email "github-actions@github.com"
-            git tag "$TAG"
-            git push origin "$TAG"
-          fi
-
-      - name: Read changelog for this version
-        id: changelog
-        run: |
-          VERSION="v${{ needs.build.outputs.version }}"
-          SECTION=$(awk "/^##[[:space:]]*\\[?$VERSION\\]?/ {flag=1} /^##[[:space:]]+/ && !/^##[[:space:]]*\\[?$VERSION\\]?/ {flag=0} flag" CHANGELOG.md | sed '/^[[:space:]]*$/d')
-
-          if [ -z "$SECTION" ]; then
-            SECTION="Drop&Resize release $VERSION."
-          fi
-
-          echo "$SECTION"
-
-          {
-            echo "body<<EOF"
-            echo "$SECTION"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ needs.build.outputs.version }}
-          name: "Drop&Resize v${{ needs.build.outputs.version }}"
-          body: ${{ steps.changelog.outputs.body }}
-          files: DropResize-Windows.zip
+      - name: Reject an existing tag from a different source commit
+        if: github.ref == 'refs/heads/master'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: v${{ steps.package.outputs.version }}
+        run: |
+          $tagReferences = @(git ls-remote --tags origin "refs/tags/$env:RELEASE_TAG" "refs/tags/$env:RELEASE_TAG^{}")
+          if ($LASTEXITCODE -ne 0) { throw "Could not verify release tag." }
+          if ($tagReferences.Count -gt 0) {
+            $tagCommit = ($tagReferences[-1] -split '\s+')[0]
+            if ($tagCommit -ne $env:GITHUB_SHA) { throw "Release tag already points to another commit." }
+          }
+
+      - name: Publish the tested commit and package
+        if: github.ref == 'refs/heads/master'
+        uses: softprops/action-gh-release@v3.0.3
+        with:
+          tag_name: v${{ steps.package.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          name: Drop&Resize v${{ steps.package.outputs.version }}
+          files: ${{ steps.package.outputs.archive }}
+          body_path: ${{ steps.package.outputs.notes }}
+          generate_release_notes: true
+          make_latest: legacy
+          fail_on_unmatched_files: true

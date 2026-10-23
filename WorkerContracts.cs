@@ -1,4 +1,8 @@
+using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Xml;
+using System.Xml.Serialization;
 
 namespace DropResize
 {
@@ -7,55 +11,41 @@ namespace DropResize
         public List<string> InputFiles { get; set; }
         public ResizeProfile Profile { get; set; }
         public string OutputFolder { get; set; }
-        public int WorkerCount { get; set; }
-        public string ResultPath { get; set; }
     }
 
-    public class WorkerResult
+    public static class WorkerProtocol
     {
-        public string InputPath { get; set; }
-        public string OutputPath { get; set; }
-        public int OriginalWidth { get; set; }
-        public int OriginalHeight { get; set; }
-        public int OutputWidth { get; set; }
-        public int OutputHeight { get; set; }
-        public long OriginalFileSize { get; set; }
-        public long OutputFileSize { get; set; }
-        public string Status { get; set; }
-        public string ErrorMessage { get; set; }
+        public const string ResultPrefix = "RESULT ";
+        private static readonly XmlSerializer JobSerializer = new XmlSerializer(typeof(WorkerJob));
+        private static readonly XmlSerializer ResultSerializer = new XmlSerializer(typeof(ResizeResult));
 
-        public static WorkerResult FromResizeResult(ResizeResult result)
+        public static void SaveJob(string path, WorkerJob job)
         {
-            return new WorkerResult
-            {
-                InputPath = result.InputPath,
-                OutputPath = result.OutputPath,
-                OriginalWidth = result.OriginalWidth,
-                OriginalHeight = result.OriginalHeight,
-                OutputWidth = result.OutputWidth,
-                OutputHeight = result.OutputHeight,
-                OriginalFileSize = result.OriginalFileSize,
-                OutputFileSize = result.OutputFileSize,
-                Status = result.Status,
-                ErrorMessage = result.ErrorMessage
-            };
+            using (var stream = File.Create(path)) JobSerializer.Serialize(stream, job);
         }
 
-        public ResizeResult ToResizeResult()
+        public static WorkerJob LoadJob(string path)
         {
-            return new ResizeResult
+            using (var stream = File.OpenRead(path)) return (WorkerJob)JobSerializer.Deserialize(stream);
+        }
+
+        public static string FormatResultLine(ResizeResult result)
+        {
+            using (var stream = new MemoryStream())
             {
-                InputPath = InputPath,
-                OutputPath = OutputPath,
-                OriginalWidth = OriginalWidth,
-                OriginalHeight = OriginalHeight,
-                OutputWidth = OutputWidth,
-                OutputHeight = OutputHeight,
-                OriginalFileSize = OriginalFileSize,
-                OutputFileSize = OutputFileSize,
-                Status = Status,
-                ErrorMessage = ErrorMessage
-            };
+                // Base64 keeps file names, errors and XML line breaks in a single stdout record.
+                using (var writer = XmlWriter.Create(stream, new XmlWriterSettings { NewLineHandling = NewLineHandling.Entitize }))
+                    ResultSerializer.Serialize(writer, result);
+                return ResultPrefix + Convert.ToBase64String(stream.ToArray());
+            }
+        }
+
+        public static ResizeResult ReadResultLine(string line)
+        {
+            if (!line.StartsWith(ResultPrefix, StringComparison.Ordinal))
+                throw new InvalidDataException("Unexpected worker response.");
+            using (var stream = new MemoryStream(Convert.FromBase64String(line.Substring(ResultPrefix.Length))))
+                return (ResizeResult)ResultSerializer.Deserialize(stream);
         }
     }
 }

@@ -1,3 +1,15 @@
+## v1.2.0
+
+### Changes
+
+- Resize images in independent worker processes, with concurrency limited by CPU count and available memory.
+- Avoid copying full-size input bitmaps and keep small previews instead of full output images in result cards.
+- Stream completed results to the UI and coalesce progress updates.
+- Prevent parallel output filename collisions and wait for workers when canceling a batch.
+- Simplify image processing, worker transport, preview ownership, and embedded executable caching.
+- Add image, protocol, cancellation, packaging, and architecture regression checks before publishing releases.
+- Publish the exact tested commit, verify the executable version, and package only the application and license.
+
 ## v1.1.0.18
 
 ### Changes

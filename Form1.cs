@@ -6,11 +6,9 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using System.Xml.Serialization;
 
 namespace DropResize
 {
@@ -25,7 +23,7 @@ namespace DropResize
         private List<ResizeProfile> profiles;
         private CancellationTokenSource currentCancellation;
         private CancellationTokenSource updateCheckCancellation;
-        private Process currentWorkerProcess;
+        private Task currentProcessingTask;
         private bool isProcessing;
         private bool updateCheckInProgress;
         private bool suppressUpdateCheckSettingSave;
@@ -38,10 +36,10 @@ namespace DropResize
         private bool marqueeAdditive;
         private Point marqueeStartContentPoint;
         private Point lastMarqueeMousePoint;
-        private int pendingProgressDone;
-        private int pendingProgressTotal;
-        private int pendingProgressBatchId;
-        private int progressUpdatePosted;
+        private int completedImageCount;
+        private int totalImageCount;
+        private int progressBatchId;
+        private readonly object progressLock = new object();
 
         public Form1()
         {
@@ -67,8 +65,7 @@ namespace DropResize
 
             if (isProcessing && currentCancellation != null)
             {
-                currentCancellation.Cancel();
-                KillCurrentWorker();
+                CancelCurrentBatch();
             }
 
             if (updateCheckCancellation != null)
@@ -149,10 +146,10 @@ namespace DropResize
             profileComboBox.SelectedIndexChanged += ProfileComboBox_SelectedIndexChanged;
 
             workerComboBox.Items.Clear();
-            workerComboBox.Items.AddRange(new object[] { "Auto", "1", "2", "4", "8", "Custom" });
+            workerComboBox.Items.AddRange(new object[] { "Auto", "1", "2", "4", "8", "16", "Custom" });
             workerComboBox.SelectedIndex = 0;
-            customWorkerCount.Maximum = Math.Max(1, Environment.ProcessorCount * 2);
-            customWorkerCount.Value = Math.Max(1, Environment.ProcessorCount - 1);
+            customWorkerCount.Maximum = Math.Max(1, Math.Min(WorkerProcessPool.MaximumWorkerCount, Environment.ProcessorCount * 2));
+            customWorkerCount.Value = Math.Min(customWorkerCount.Maximum, Math.Max(1, Environment.ProcessorCount));
             customWorkerCount.Enabled = false;
 
             suppressUpdateCheckSettingSave = true;
@@ -366,7 +363,7 @@ namespace DropResize
 
             var inputFiles = sourceCards
                 .Select(c => c.Result.InputPath)
-                .Where(ResizeJob.IsSupportedInputFile)
+                .Where(ImageResizeService.IsSupportedInputFile)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
@@ -463,8 +460,7 @@ namespace DropResize
                     return;
                 }
 
-                currentCancellation.Cancel();
-                KillCurrentWorker();
+                CancelCurrentBatch();
             }
 
             await autoUpdateService.DownloadAndStartUpdateAsync(
@@ -489,7 +485,7 @@ namespace DropResize
 
             var droppedFiles = ((string[])e.Data.GetData(DataFormats.FileDrop)).ToList();
             var files = droppedFiles
-                .Where(ResizeJob.IsSupportedInputFile)
+                .Where(ImageResizeService.IsSupportedInputFile)
                 .Where(path => !IsInCurrentBatchFolder(path))
                 .ToList();
 
@@ -510,52 +506,61 @@ namespace DropResize
             {
                 var answer = MessageBox.Show(
                     "Cancel current processing and start a new batch?",
-                    "Drop&Resize",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Question);
-
-                if (answer != DialogResult.Yes)
-                {
-                    return;
-                }
-
-                currentCancellation.Cancel();
-                KillCurrentWorker();
+                    "Drop&Resize", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                if (answer != DialogResult.Yes) return;
             }
 
-            var profile = (ResizeProfile)profileComboBox.SelectedItem;
-            var workerCount = GetWorkerCount();
-            SetStatus("Processing " + files.Count + " image(s) with " + workerCount + " worker(s)...");
-            ShowProcessingOverlay(files.Count, workerCount);
-            await Task.Delay(75);
-
+            var previousTask = currentProcessingTask;
+            if (currentCancellation != null) currentCancellation.Cancel();
+            var batchCancellation = new CancellationTokenSource();
+            currentCancellation = batchCancellation;
             var batchId = ++currentBatchId;
-            CleanupCurrentBatchFolder();
-
-            currentBatchFolder = TempBatchManager.Create();
-            currentCancellation = new CancellationTokenSource();
-            var batchCancellation = currentCancellation;
             isProcessing = true;
-            var jobPath = Path.Combine(currentBatchFolder.BatchFolder, "job.xml");
-            var resultPath = Path.Combine(currentBatchFolder.BatchFolder, "results.xml");
-            SaveWorkerJob(new WorkerJob
-            {
-                InputFiles = files,
-                Profile = profile,
-                OutputFolder = currentBatchFolder.BatchFolder,
-                WorkerCount = workerCount,
-                ResultPath = resultPath
-            }, jobPath);
+            var profile = ((ResizeProfile)profileComboBox.SelectedItem).Clone();
+            var workerCount = GetWorkerCount();
+            var successCount = 0;
+            var errorCount = 0;
+            var finished = false;
 
             try
             {
-                resultFlushTimer.Start();
-                await RunWorkerProcessAsync(jobPath, batchId, batchCancellation.Token);
-
-                foreach (var result in LoadWorkerResults(resultPath))
+                // Cancellation must finish closing every old worker before deleting its output files.
+                if (previousTask != null)
                 {
-                    QueueResult(result.ToResizeResult(), batchId);
+                    try { await previousTask; }
+                    catch { /* The previous batch reports its own failure. */ }
                 }
+                batchCancellation.Token.ThrowIfCancellationRequested();
+                if (batchId != currentBatchId) return;
+
+                CleanupCurrentBatchFolder();
+                currentBatchFolder = TempBatchManager.Create();
+                SetStatus("Processing " + files.Count + " image(s) with up to " + workerCount + " worker(s)...");
+                ShowProcessingOverlay(files.Count, workerCount);
+                RecordBatchProgress(0, 0, batchId);
+                resultFlushTimer.Start();
+                await Task.Delay(20, batchCancellation.Token);
+
+                var pool = new WorkerProcessPool(EmbeddedExecutableCache.GetExecutablePath("Drop&Resize.Worker.exe"));
+                var processingTask = pool.ProcessAsync(files, profile, currentBatchFolder.BatchFolder, workerCount,
+                    batchCancellation.Token,
+                    result =>
+                    {
+                        if (result.Success) Interlocked.Increment(ref successCount);
+                        else Interlocked.Increment(ref errorCount);
+                        QueueResult(result, batchId);
+                    },
+                    (done, total) => RecordBatchProgress(done, total, batchId));
+                currentProcessingTask = processingTask;
+                await processingTask;
+
+                while (!pendingResults.IsEmpty)
+                {
+                    batchCancellation.Token.ThrowIfCancellationRequested();
+                    FlushPendingResults(12);
+                    await Task.Yield();
+                }
+                finished = true;
             }
             catch (OperationCanceledException)
             {
@@ -569,184 +574,26 @@ namespace DropResize
             {
                 if (currentCancellation == batchCancellation)
                 {
+                    currentProcessingTask = null;
+                    currentCancellation = null;
+                    RecordBatchProgress(0, 0, batchId);
                     FlushPendingResults(int.MaxValue);
                     resultFlushTimer.Stop();
                     HideProcessingOverlay();
                     isProcessing = false;
-                    if (!batchCancellation.IsCancellationRequested)
+                    if (finished)
                     {
-                        SetStatusSafe(
-                            "Batch complete. Drag selected completed cards out to copy resized files.",
-                            batchId);
+                        SetStatusSafe("Batch complete: " + successCount + " done, " + errorCount +
+                            " failed. Drag selected completed cards out to copy resized files.", batchId);
                     }
                 }
+                batchCancellation.Dispose();
             }
         }
 
-        private async Task RunWorkerProcessAsync(string jobPath, int batchId, CancellationToken cancellationToken)
+        private void CancelCurrentBatch()
         {
-            var workerPath = ExtractEmbeddedWorkerExecutable();
-
-            var errors = new StringBuilder();
-            var process = new Process
-            {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = workerPath,
-                    Arguments = "\"" + jobPath + "\"",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
-                },
-                EnableRaisingEvents = true
-            };
-
-            var completed = new TaskCompletionSource<int>();
-
-            process.OutputDataReceived += (sender, args) =>
-            {
-                if (!string.IsNullOrWhiteSpace(args.Data))
-                {
-                    HandleWorkerOutput(args.Data, batchId);
-                }
-            };
-            process.ErrorDataReceived += (sender, args) =>
-            {
-                if (!string.IsNullOrWhiteSpace(args.Data))
-                {
-                    errors.AppendLine(args.Data);
-                }
-            };
-            process.Exited += (sender, args) => completed.TrySetResult(process.ExitCode);
-
-            currentWorkerProcess = process;
-            process.Start();
-            try
-            {
-                process.PriorityClass = ProcessPriorityClass.BelowNormal;
-            }
-            catch
-            {
-                // Priority changes can fail under restricted process permissions.
-            }
-
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
-
-            using (cancellationToken.Register(() =>
-            {
-                try
-                {
-                    if (!process.HasExited)
-                    {
-                        process.Kill();
-                    }
-                }
-                catch
-                {
-                    // The process may exit between HasExited and Kill.
-                }
-            }))
-            {
-                var exitCode = await completed.Task;
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    throw new OperationCanceledException(cancellationToken);
-                }
-
-                if (exitCode != 0)
-                {
-                    throw new InvalidOperationException(errors.Length == 0
-                        ? "Worker exited with code " + exitCode + "."
-                        : errors.ToString().Trim());
-                }
-            }
-
-            process.Dispose();
-            if (currentWorkerProcess == process)
-            {
-                currentWorkerProcess = null;
-            }
-        }
-
-        private static string ExtractEmbeddedWorkerExecutable()
-        {
-            const string resourceName = "Drop&Resize.Worker.exe";
-            var targetFolder = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Drop&Resize",
-                "Worker");
-            Directory.CreateDirectory(targetFolder);
-
-            var targetPath = Path.Combine(targetFolder, resourceName);
-            using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName))
-            {
-                if (stream != null)
-                {
-                    using (var output = File.Create(targetPath))
-                    {
-                        stream.CopyTo(output);
-                    }
-
-                    return targetPath;
-                }
-            }
-
-            var fallbackPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, resourceName);
-            if (File.Exists(fallbackPath))
-            {
-                return fallbackPath;
-            }
-
-            throw new FileNotFoundException("Worker executable was not found.", fallbackPath);
-        }
-
-        private void HandleWorkerOutput(string line, int batchId)
-        {
-            var parts = line.Split(' ');
-            if (parts.Length == 3 && parts[0] == "PROGRESS")
-            {
-                int done;
-                int total;
-                if (int.TryParse(parts[1], out done) && int.TryParse(parts[2], out total))
-                {
-                    QueueProgress(done, total, batchId);
-                }
-            }
-        }
-
-        private static void SaveWorkerJob(WorkerJob job, string path)
-        {
-            using (var stream = File.Create(path))
-            {
-                var serializer = new XmlSerializer(typeof(WorkerJob));
-                serializer.Serialize(stream, job);
-            }
-        }
-
-        private static List<WorkerResult> LoadWorkerResults(string path)
-        {
-            using (var stream = File.OpenRead(path))
-            {
-                var serializer = new XmlSerializer(typeof(List<WorkerResult>));
-                return (List<WorkerResult>)serializer.Deserialize(stream);
-            }
-        }
-
-        private void KillCurrentWorker()
-        {
-            try
-            {
-                if (currentWorkerProcess != null && !currentWorkerProcess.HasExited)
-                {
-                    currentWorkerProcess.Kill();
-                }
-            }
-            catch
-            {
-                // Cancellation and shutdown should continue even if the worker already exited.
-            }
+            if (currentCancellation != null) currentCancellation.Cancel();
         }
 
         private bool IsInCurrentBatchFolder(string path)
@@ -770,7 +617,7 @@ namespace DropResize
             var selected = workerComboBox.SelectedItem.ToString();
             if (selected == "Auto")
             {
-                return Math.Max(1, Environment.ProcessorCount - 1);
+                return WorkerProcessPool.GetAutomaticWorkerCount();
             }
 
             if (selected == "Custom")
@@ -786,7 +633,7 @@ namespace DropResize
             ResizeResult ignored;
             while (pendingResults.TryDequeue(out ignored))
             {
-                DisposeResultThumbnail(ignored);
+                ignored.Dispose();
             }
 
             ClearFocusedCard();
@@ -824,39 +671,36 @@ namespace DropResize
         {
             if (batchId != currentBatchId)
             {
-                DisposeResultThumbnail(result);
+                result.Dispose();
                 return;
             }
 
             pendingResults.Enqueue(result);
         }
 
-        private void QueueProgress(int done, int total, int batchId)
+        private void RecordBatchProgress(int completedImages, int totalImages, int batchId)
         {
-            pendingProgressDone = done;
-            pendingProgressTotal = total;
-            pendingProgressBatchId = batchId;
-
-            if (Interlocked.Exchange(ref progressUpdatePosted, 1) == 0)
+            lock (progressLock)
             {
-                BeginInvoke(new Action(ApplyPendingProgress));
+                if (batchId != currentBatchId) return;
+                completedImageCount = completedImages;
+                totalImageCount = totalImages;
+                progressBatchId = batchId;
             }
         }
 
         private void ResultFlushTimer_Tick(object sender, EventArgs e)
         {
-            ApplyPendingProgress();
-        }
-
-        private void ApplyPendingProgress()
-        {
-            Interlocked.Exchange(ref progressUpdatePosted, 0);
-
-            if (pendingProgressBatchId == currentBatchId && pendingProgressTotal > 0)
+            // One UI timer coalesces progress and result cards; workers never post per-file UI messages.
+            lock (progressLock)
             {
-                SetStatus("Processed " + pendingProgressDone + " of " + pendingProgressTotal + " image(s).");
-                UpdateProcessingOverlay(pendingProgressDone, pendingProgressTotal);
+                if (progressBatchId == currentBatchId && totalImageCount > 0)
+                {
+                    SetStatus("Processed " + completedImageCount + " of " + totalImageCount + " image(s).");
+                    UpdateProcessingOverlay(completedImageCount, totalImageCount);
+                }
             }
+            FlushPendingResults(12);
         }
 
         private void FlushPendingResults(int maxCount)
@@ -885,15 +729,6 @@ namespace DropResize
             card.CardMouseUp += ImageCard_MouseUp;
             card.SetDropHandlers(Form1_DragEnter, Form1_DragDrop);
             cardsPanel.Controls.Add(card);
-        }
-
-        private static void DisposeResultThumbnail(ResizeResult result)
-        {
-            if (result != null && result.Thumbnail != null)
-            {
-                result.Thumbnail.Dispose();
-                result.Thumbnail = null;
-            }
         }
 
         private void CardsPanel_MouseDown(object sender, MouseEventArgs e)
@@ -1431,7 +1266,7 @@ namespace DropResize
         {
             processingProgressBar.Maximum = Math.Max(1, total);
             processingProgressBar.Value = 0;
-            processingLabel.Text = "Processing 0 of " + total + " image(s) with " + workerCount + " worker(s)...";
+            processingLabel.Text = "Processing 0 of " + total + " image(s) with up to " + workerCount + " worker(s)...";
             processingOverlay.Visible = true;
             processingOverlay.BringToFront();
             processingOverlay.Refresh();

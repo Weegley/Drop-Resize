@@ -111,9 +111,10 @@ namespace DropResize
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing && thumbnailBox.Image != null)
+            if (disposing && thumbnailBox != null && thumbnailBox.Image != null)
             {
-                thumbnailBox.Image.Dispose();
+                thumbnailBox.Image = null;
+                Result.Dispose();
             }
 
             base.Dispose(disposing);
@@ -130,7 +131,8 @@ namespace DropResize
 
             if (Result.Success)
             {
-                thumbnailBox.Image = Result.Thumbnail ?? LoadThumbnail(Result.OutputPath);
+                Result.Thumbnail = Result.Thumbnail ?? LoadThumbnail(Result.OutputPath);
+                thumbnailBox.Image = Result.Thumbnail;
             }
 
             detailsLabel.Text =
@@ -144,10 +146,14 @@ namespace DropResize
 
         private static Image LoadThumbnail(string path)
         {
-            using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-            using (var image = Image.FromStream(stream))
+            try
             {
-                return new Bitmap(image);
+                return ImageResizeService.CreateThumbnail(path, 96, 96);
+            }
+            catch (Exception)
+            {
+                // A missing preview should not prevent an otherwise valid result from being shown.
+                return null;
             }
         }
 

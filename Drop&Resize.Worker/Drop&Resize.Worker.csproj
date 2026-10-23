@@ -12,6 +12,7 @@
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <Deterministic>true</Deterministic>
+    <Prefer32Bit>false</Prefer32Bit>
     <ApplicationIcon>..\DropResize_icon_multi.ico</ApplicationIcon>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
@@ -42,14 +43,8 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />
-    <Compile Include="..\BatchProcessor.cs">
-      <Link>BatchProcessor.cs</Link>
-    </Compile>
     <Compile Include="..\ImageResizeService.cs">
       <Link>ImageResizeService.cs</Link>
-    </Compile>
-    <Compile Include="..\ResizeJob.cs">
-      <Link>ResizeJob.cs</Link>
     </Compile>
     <Compile Include="..\ResizeProfile.cs">
       <Link>ResizeProfile.cs</Link>

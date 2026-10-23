@@ -64,20 +64,33 @@ namespace DropResize
             return new TempBatchManager(folder);
         }
 
-        public static string GetUniqueOutputPath(string outputFolder, string inputPath, ResizeProfile profile)
+        public static string ReserveOutputPath(string outputFolder, string inputPath, ResizeProfile profile)
         {
             var baseName = MakeSafeFileName(Path.GetFileNameWithoutExtension(inputPath));
             var extension = GetExtension(profile.OutputFormat);
             var candidate = Path.Combine(outputFolder, baseName + profile.Suffix + extension);
             var index = 2;
 
-            while (File.Exists(candidate))
+            while (true)
             {
-                candidate = Path.Combine(outputFolder, baseName + profile.Suffix + "_" + index + extension);
-                index++;
+                try
+                {
+                    // Reserve atomically: multiple worker processes can receive identical base names.
+                    using (new FileStream(candidate, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                    {
+                    }
+                    return candidate;
+                }
+                catch (IOException)
+                {
+                    if (!File.Exists(candidate))
+                    {
+                        throw;
+                    }
+                    candidate = Path.Combine(outputFolder, baseName + profile.Suffix + "_" + index + extension);
+                    index++;
+                }
             }
-
-            return candidate;
         }
 
         private static string MakeSafeFileName(string name)

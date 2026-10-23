@@ -55,7 +55,7 @@ namespace DropResize
             var sourceDirectory = Path.GetDirectoryName(sourceExecutable);
             var currentExecutable = Assembly.GetExecutingAssembly().Location;
             var targetDirectory = Path.GetDirectoryName(currentExecutable);
-            var updaterPath = ExtractUpdater(updateRoot);
+            var updaterPath = EmbeddedExecutableCache.GetExecutablePath(UpdaterResourceName);
 
             statusChanged?.Invoke("Restarting to apply update...");
             StartUpdater(updaterPath, sourceDirectory, targetDirectory, currentExecutable);
@@ -127,26 +127,6 @@ namespace DropResize
             }
 
             return executable[0];
-        }
-
-        private static string ExtractUpdater(string updateRoot)
-        {
-            var updaterPath = Path.Combine(updateRoot, UpdaterResourceName);
-
-            using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(UpdaterResourceName))
-            {
-                if (stream == null)
-                {
-                    throw new InvalidOperationException("Updater resource is missing.");
-                }
-
-                using (var output = new FileStream(updaterPath, FileMode.Create, FileAccess.Write, FileShare.Read))
-                {
-                    stream.CopyTo(output);
-                }
-            }
-
-            return updaterPath;
         }
 
         private static void StartUpdater(

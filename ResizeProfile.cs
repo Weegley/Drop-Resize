@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Drawing;
 
 namespace DropResize
 {
@@ -26,6 +28,14 @@ namespace DropResize
         public long JpegQuality { get; set; }
         public string Suffix { get; set; }
         public bool IsBuiltIn { get; set; }
+
+        public Size CalculateOutputSize(int originalWidth, int originalHeight)
+        {
+            var scale = Math.Min((double)MaxWidth / originalWidth, (double)MaxHeight / originalHeight);
+            if (DoNotEnlarge) scale = Math.Min(1, scale);
+            return new Size(Math.Max(1, (int)Math.Round(originalWidth * scale)),
+                Math.Max(1, (int)Math.Round(originalHeight * scale)));
+        }
 
         public override string ToString()
         {

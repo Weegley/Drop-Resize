@@ -9,12 +9,18 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Drop&Resize.Worker", "Drop&
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Drop&Resize.Updater", "Drop&Resize.Updater\Drop&Resize.Updater.csproj", "{9E0F44AF-625D-4A37-87F8-A082B7B6D4A4}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ResizeTests", "Tests\ResizeTests.csproj", "{A21BD2EE-40F2-45EA-AD9D-078868044D66}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A21BD2EE-40F2-45EA-AD9D-078868044D66}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A21BD2EE-40F2-45EA-AD9D-078868044D66}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A21BD2EE-40F2-45EA-AD9D-078868044D66}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A21BD2EE-40F2-45EA-AD9D-078868044D66}.Release|Any CPU.Build.0 = Release|Any CPU
 		{0B49A622-E937-47F4-8A40-1E839F7E1C8A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{0B49A622-E937-47F4-8A40-1E839F7E1C8A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0B49A622-E937-47F4-8A40-1E839F7E1C8A}.Release|Any CPU.ActiveCfg = Release|Any CPU
