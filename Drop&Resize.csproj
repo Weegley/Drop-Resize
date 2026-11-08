@@ -14,7 +14,7 @@
     <Deterministic>true</Deterministic>
     <Prefer32Bit>false</Prefer32Bit>
     <ApplicationIcon>DropResize_icon_multi.ico</ApplicationIcon>
-    <BaseVersion>1.2.0</BaseVersion>
+    <BaseVersion>1.2.1</BaseVersion>
     <BuildRevision Condition=" '$(BuildRevision)' == '' ">0</BuildRevision>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
@@ -85,6 +85,7 @@
     </Compile>
     <Compile Include="UpdateCheckService.cs" />
     <Compile Include="UpdateInfo.cs" />
+    <Compile Include="UpdateWorkspace.cs" />
     <Compile Include="WorkerContracts.cs" />
     <Compile Include="WorkerProcessPool.cs" />
     <EmbeddedResource Include="Form1.resx">

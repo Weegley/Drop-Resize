@@ -12,7 +12,7 @@ namespace DropResize.Updater
 
         private static int Main(string[] args)
         {
-            if (args.Length < 4)
+            if (args.Length != 5)
             {
                 return 1;
             }
@@ -26,23 +26,34 @@ namespace DropResize.Updater
             var sourceDirectory = args[1];
             var targetDirectory = args[2];
             var executablePath = args[3];
-
-            if (!Directory.Exists(sourceDirectory) || !Directory.Exists(targetDirectory))
-            {
-                return 1;
-            }
+            var updateRoot = args[4];
 
             try
             {
+                // Reject an unrelated cleanup path or an installation inside the download workspace.
+                if (!UpdateWorkspace.IsUpdateDirectory(updateRoot) ||
+                    !UpdateWorkspace.ContainsPath(updateRoot, sourceDirectory) ||
+                    UpdateWorkspace.ContainsPath(updateRoot, targetDirectory) ||
+                    !UpdateWorkspace.ContainsPath(targetDirectory, executablePath)) return 1;
+            }
+            catch (Exception) { return 1; }
+
+            try
+            {
+                if (!Directory.Exists(sourceDirectory) || !Directory.Exists(targetDirectory))
+                    throw new DirectoryNotFoundException("The update source or installation directory is missing.");
                 CloseMainProcess(processId);
                 CopyDirectory(sourceDirectory, targetDirectory);
                 StartApplication(executablePath);
-                TryDeleteDirectory(Path.GetDirectoryName(sourceDirectory));
                 return 0;
             }
             catch
             {
                 return 1;
+            }
+            finally
+            {
+                UpdateWorkspace.TryDelete(updateRoot);
             }
         }
 
@@ -144,7 +155,7 @@ namespace DropResize.Updater
         {
             if (!File.Exists(executablePath))
             {
-                return;
+                throw new FileNotFoundException("The updated application was not found.", executablePath);
             }
 
             Process.Start(new ProcessStartInfo
@@ -155,20 +166,5 @@ namespace DropResize.Updater
             });
         }
 
-        private static void TryDeleteDirectory(string path)
-        {
-            if (string.IsNullOrEmpty(path) || !Directory.Exists(path))
-            {
-                return;
-            }
-
-            try
-            {
-                Directory.Delete(path, true);
-            }
-            catch
-            {
-            }
-        }
     }
 }

@@ -31,6 +31,7 @@ internal static class ResizeTests
         root = Path.Combine(args[0], "tmp", "tests-" + Guid.NewGuid().ToString("N"));
         worker = args[1];
         Directory.CreateDirectory(root);
+        UpdateCleanupTests.Initialize(args[0], root, worker);
 
         Test("fit landscape and portrait, bounded previews", TestFit);
         Test("do not enlarge and explicit enlargement", TestEnlargement);
@@ -52,6 +53,21 @@ internal static class ResizeTests
         Test("callback failure stops peers and cleans job files", TestCallbackFailure);
         Test("worker crash, missing executable and invalid protocol", TestWorkerFailures);
         Test("cards own small previews, dispose safely, tolerate missing preview", TestCards);
+        Test("Shift-click ranges retain their anchor and support Ctrl+Shift", CardInteractionTests.TestShiftClick);
+        Test("Shift-arrows extend, shrink and cross the selection anchor", CardInteractionTests.TestShiftArrows);
+        Test("Shift-Up/Down follow wrapped rows and scroll into view", CardInteractionTests.TestShiftVerticalArrows);
+        Test("partial removal preserves order, previews and keyboard selection", CardInteractionTests.TestPartialRemoval);
+        Test("clearing 1000 cards releases results with bounded layout work", CardInteractionTests.TestLargeBatchClear);
+        Test("deleting 1000 selected cards leaves the list reusable", CardInteractionTests.TestLargeSelectionDelete);
+        Test("new batch cleanup releases the previous output folder", CardInteractionTests.TestBatchFolderCleanup);
+        Test("download handoff preserves files owned by the updater", UpdateCleanupTests.TestDownloadHandoff);
+        Test("download, ZIP and updater launch failures remove temporary files", UpdateCleanupTests.TestPreparationFailures);
+        Test("canceled and partial update downloads remove temporary files", UpdateCleanupTests.TestDownloadCancellation);
+        Test("concurrent downloads of one release use separate folders", UpdateCleanupTests.TestConcurrentDownloads);
+        Test("real updater installs, restarts and removes ZIP plus extracted files", UpdateCleanupTests.TestInstallAndCleanup);
+        Test("updater copy and restart failures also clean their workspace", UpdateCleanupTests.TestUpdaterFailures);
+        Test("cleanup preserves unrelated files and retries temporary locks", UpdateCleanupTests.TestCleanupBoundariesAndRetry);
+        Test("first upgrade with the old helper cleans its leftover ZIP", UpdateCleanupTests.TestLegacyCleanup);
 
         Console.WriteLine("Passed: {0}; failed: {1}. Artifacts: {2}", passed, failed, root);
         return failed == 0 ? 0 : 1;
@@ -451,6 +467,9 @@ internal static class ResizeTests
         using (var card = new ImageCardControl(result))
             Assert(result.Thumbnail.Width <= 96, "Card holds a full-size image.");
         Assert(result.Thumbnail == null, "Disposed card retained its preview.");
+        var error = new ResizeResult { InputPath = "broken", ErrorMessage = "broken image", Thumbnail = new Bitmap(8, 8) };
+        using (var card = new ImageCardControl(error)) { }
+        Assert(error.Thumbnail == null, "An error card retained its owned preview.");
         using (var card = new ImageCardControl(new ResizeResult { InputPath = "missing", OutputPath = "missing" })) { }
     }
 

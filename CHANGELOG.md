@@ -1,3 +1,14 @@
+## v1.2.1
+
+### Changes
+
+- Select card ranges with Shift-click and Shift-arrow keys, with Ctrl+Shift for additive selection.
+- Clear large result lists in one layout batch and delete old temporary outputs without blocking the UI thread.
+- Remove update ZIPs and extracted files after installation, cancellation, or failure; clean leftovers from the old updater on first launch.
+- Isolate concurrent update downloads and retry cleanup when a file is briefly locked.
+- Release card previews and owned fonts when cards are removed.
+- Expand regression coverage to 35 groups, including 1000-card lists and real updater installation/restart tests.
+
 ## v1.2.0
 
 ### Changes

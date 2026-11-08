@@ -75,6 +75,7 @@ namespace DropResize
             get { return isSelected; }
             set
             {
+                if (isSelected == value) return;
                 isSelected = value;
                 BackColor = isSelected ? Color.FromArgb(229, 243, 255) : Color.White;
             }
@@ -85,6 +86,7 @@ namespace DropResize
             get { return isKeyboardFocused; }
             set
             {
+                if (isKeyboardFocused == value) return;
                 isKeyboardFocused = value;
                 Invalidate();
             }
@@ -111,10 +113,14 @@ namespace DropResize
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing && thumbnailBox != null && thumbnailBox.Image != null)
+            if (disposing && !IsDisposed)
             {
                 thumbnailBox.Image = null;
                 Result.Dispose();
+                // These fonts belong to this card, unlike the inherited control font.
+                titleLabel.Font.Dispose();
+                detailsLabel.Font.Dispose();
+                statusLabel.Font.Dispose();
             }
 
             base.Dispose(disposing);

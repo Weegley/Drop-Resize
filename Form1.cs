@@ -17,7 +17,7 @@ namespace DropResize
         private readonly ProfileStore profileStore = new ProfileStore();
         private readonly UpdateCheckService updateCheckService = new UpdateCheckService();
         private readonly AutoUpdateService autoUpdateService = new AutoUpdateService();
-        private readonly List<ImageCardControl> selectedCards = new List<ImageCardControl>();
+        private readonly HashSet<ImageCardControl> selectedCards = new HashSet<ImageCardControl>();
         private readonly ConcurrentQueue<ResizeResult> pendingResults = new ConcurrentQueue<ResizeResult>();
 
         private List<ResizeProfile> profiles;
@@ -31,6 +31,7 @@ namespace DropResize
         private int currentBatchId;
         private ImageCardControl dragStartCard;
         private ImageCardControl focusedCard;
+        private ImageCardControl selectionAnchorCard;
         private Point dragStartPoint;
         private bool marqueeSelecting;
         private bool marqueeAdditive;
@@ -358,7 +359,7 @@ namespace DropResize
         private async void ResizeAgain_Click(object sender, EventArgs e)
         {
             var sourceCards = selectedCards.Count > 0
-                ? selectedCards
+                ? (IEnumerable<ImageCardControl>)selectedCards
                 : cardsPanel.Controls.OfType<ImageCardControl>().ToList();
 
             var inputFiles = sourceCards
@@ -524,6 +525,8 @@ namespace DropResize
 
             try
             {
+                SetStatus("Preparing " + files.Count + " image(s)...");
+                ShowProcessingOverlay(files.Count, workerCount);
                 // Cancellation must finish closing every old worker before deleting its output files.
                 if (previousTask != null)
                 {
@@ -533,10 +536,11 @@ namespace DropResize
                 batchCancellation.Token.ThrowIfCancellationRequested();
                 if (batchId != currentBatchId) return;
 
-                CleanupCurrentBatchFolder();
+                await CleanupCurrentBatchFolderAsync();
+                batchCancellation.Token.ThrowIfCancellationRequested();
+                if (batchId != currentBatchId) return;
                 currentBatchFolder = TempBatchManager.Create();
                 SetStatus("Processing " + files.Count + " image(s) with up to " + workerCount + " worker(s)...");
-                ShowProcessingOverlay(files.Count, workerCount);
                 RecordBatchProgress(0, 0, batchId);
                 resultFlushTimer.Start();
                 await Task.Delay(20, batchCancellation.Token);
@@ -636,26 +640,17 @@ namespace DropResize
                 ignored.Dispose();
             }
 
-            ClearFocusedCard();
-            selectedCards.Clear();
-            foreach (Control control in cardsPanel.Controls.Cast<Control>().Where(c => c != instructionLabel).ToList())
-            {
-                cardsPanel.Controls.Remove(control);
-                control.Dispose();
-            }
-
-            if (instructionLabel.Parent != cardsPanel)
-            {
-                cardsPanel.Controls.Add(instructionLabel);
-            }
-
-            UpdateInstructionLayout();
+            ResetCardInteraction();
+            RemoveCards(new HashSet<ImageCardControl>(GetResultCards()));
         }
 
-        private void CleanupCurrentBatchFolder()
+        private async Task CleanupCurrentBatchFolderAsync()
         {
             ClearCurrentBatch();
-            DeleteCurrentBatchFolder();
+            var previousBatchFolder = currentBatchFolder;
+            currentBatchFolder = null;
+            // File deletion can be slow on antivirus-scanned or busy disks; leave the UI responsive.
+            if (previousBatchFolder != null) await Task.Run(() => previousBatchFolder.Delete());
         }
 
         private void DeleteCurrentBatchFolder()
@@ -749,6 +744,7 @@ namespace DropResize
             if (!marqueeAdditive)
             {
                 ClearSelection();
+                selectionAnchorCard = null;
             }
         }
 
@@ -842,27 +838,64 @@ namespace DropResize
                 return;
             }
 
-            SetFocusedCard(card, !card.Result.Success);
+            SelectCard(card, ModifierKeys);
+            dragStartCard = card.Result.Success ? card : null;
+            dragStartPoint = e.Location;
+        }
 
-            if (!card.Result.Success)
+        private void SelectCard(ImageCardControl card, Keys modifiers)
+        {
+            if ((modifiers & Keys.Shift) != 0)
             {
+                SelectRangeTo(card, (modifiers & Keys.Control) != 0);
                 return;
             }
 
-            dragStartCard = card;
-            dragStartPoint = e.Location;
+            selectionAnchorCard = card;
+            SetFocusedCard(card, !card.Result.Success);
+            if (!card.Result.Success) return;
 
-            var ctrl = (ModifierKeys & Keys.Control) == Keys.Control;
-            if (ctrl)
+            if ((modifiers & Keys.Control) != 0)
             {
                 ToggleCardSelection(card);
-                return;
             }
-
-            if (!selectedCards.Contains(card))
+            else if (!selectedCards.Contains(card))
             {
                 SelectOnly(card);
             }
+        }
+
+        private void SelectRangeTo(ImageCardControl targetCard, bool additive)
+        {
+            var cards = GetResultCards();
+            var targetIndex = cards.IndexOf(targetCard);
+            if (targetIndex < 0) return;
+
+            if (selectionAnchorCard == null || selectionAnchorCard.Parent != cardsPanel)
+            {
+                selectionAnchorCard = focusedCard != null && focusedCard.Parent == cardsPanel
+                    ? focusedCard : targetCard;
+            }
+
+            // Keep the anchor fixed while Shift moves the other end, including back across it.
+            var anchorIndex = cards.IndexOf(selectionAnchorCard);
+            var firstIndex = Math.Min(anchorIndex, targetIndex);
+            var lastIndex = Math.Max(anchorIndex, targetIndex);
+            for (var index = 0; index < cards.Count; index++)
+            {
+                var inRange = index >= firstIndex && index <= lastIndex;
+                if (!additive || inRange)
+                    SetCardSelected(cards[index], inRange && cards[index].Result.Success);
+            }
+
+            SetFocusedCard(targetCard, false);
+        }
+
+        private void SetCardSelected(ImageCardControl card, bool selected)
+        {
+            if (selected) selectedCards.Add(card);
+            else selectedCards.Remove(card);
+            card.IsSelected = selected;
         }
 
         private void ImageCard_MouseMove(object sender, MouseEventArgs e)
@@ -897,14 +930,14 @@ namespace DropResize
         private void SelectOnly(ImageCardControl card)
         {
             ClearSelection();
-            selectedCards.Add(card);
-            card.IsSelected = true;
+            SetCardSelected(card, card.Result.Success);
+            selectionAnchorCard = card;
             SetFocusedCard(card, false);
         }
 
         private void ClearSelection()
         {
-            foreach (var selected in selectedCards.ToList())
+            foreach (var selected in selectedCards)
             {
                 selected.IsSelected = false;
             }
@@ -915,9 +948,8 @@ namespace DropResize
         private bool RemoveSelectedCards()
         {
             var allCards = GetResultCards();
-            var cardsToRemove = selectedCards
-                .Where(card => card.Parent == cardsPanel)
-                .ToList();
+            var cardsToRemove = new HashSet<ImageCardControl>(
+                selectedCards.Where(card => card.Parent == cardsPanel));
 
             if (cardsToRemove.Count == 0 && focusedCard != null && focusedCard.Parent == cardsPanel)
             {
@@ -930,20 +962,8 @@ namespace DropResize
             }
 
             var focusIndex = GetReplacementFocusIndex(allCards, cardsToRemove);
-            dragStartCard = null;
-            marqueeSelecting = false;
-            marqueeScrollTimer.Stop();
-            cardsPanel.SelectionRectangle = Rectangle.Empty;
-            ClearFocusedCard();
-
-            cardsPanel.SuspendLayout();
-            foreach (var card in cardsToRemove)
-            {
-                cardsPanel.Controls.Remove(card);
-                card.Dispose();
-            }
-
-            selectedCards.Clear();
+            ResetCardInteraction();
+            RemoveCards(cardsToRemove);
 
             var remainingCards = GetResultCards();
             if (remainingCards.Count > 0)
@@ -951,19 +971,61 @@ namespace DropResize
                 SetFocusedCard(remainingCards[Math.Min(focusIndex, remainingCards.Count - 1)], true);
             }
 
-            if (!cardsPanel.Controls.OfType<ImageCardControl>().Any() && instructionLabel.Parent != cardsPanel)
-            {
-                cardsPanel.Controls.Add(instructionLabel);
-            }
-
-            cardsPanel.ResumeLayout();
-            UpdateInstructionLayout();
             return true;
+        }
+
+        private void ResetCardInteraction()
+        {
+            dragStartCard = null;
+            selectionAnchorCard = null;
+            marqueeSelecting = false;
+            marqueeScrollTimer.Stop();
+            cardsPanel.Capture = false;
+            cardsPanel.SelectionRectangle = Rectangle.Empty;
+            ClearFocusedCard();
+            selectedCards.Clear();
+        }
+
+        private void RemoveCards(ISet<ImageCardControl> cardsToRemove)
+        {
+            var restoreVisibility = cardsPanel.Visible;
+            var parent = cardsPanel.Parent;
+            if (parent != null) parent.SuspendLayout();
+            cardsPanel.SuspendLayout();
+            try
+            {
+                // Suppress layout and native child-window redraws throughout the removal.
+                if (restoreVisibility) cardsPanel.Hide();
+                for (var index = cardsPanel.Controls.Count - 1; index >= 0; index--)
+                {
+                    var card = cardsPanel.Controls[index] as ImageCardControl;
+                    if (card == null || !cardsToRemove.Contains(card)) continue;
+                    // Removing backwards avoids repeatedly shifting the remaining controls.
+                    cardsPanel.Controls.RemoveAt(index);
+                    card.Dispose();
+                }
+
+                if (cardsPanel.Controls.Count == 0)
+                {
+                    cardsPanel.AutoScrollPosition = Point.Empty;
+                    cardsPanel.Controls.Add(instructionLabel);
+                }
+                UpdateInstructionLayout();
+            }
+            finally
+            {
+                if (restoreVisibility) cardsPanel.Show();
+                cardsPanel.ResumeLayout(true);
+                if (parent != null) parent.ResumeLayout(true);
+            }
         }
 
         private bool MoveFocusedCard(Keys keyData)
         {
-            if (keyData != Keys.Left && keyData != Keys.Right && keyData != Keys.Up && keyData != Keys.Down)
+            var direction = keyData & Keys.KeyCode;
+            var modifiers = keyData & Keys.Modifiers;
+            if ((direction != Keys.Left && direction != Keys.Right && direction != Keys.Up && direction != Keys.Down) ||
+                (modifiers != Keys.None && modifiers != Keys.Shift && modifiers != (Keys.Control | Keys.Shift)))
             {
                 return false;
             }
@@ -977,7 +1039,9 @@ namespace DropResize
 
             if (focusedCard == null)
             {
-                return false;
+                var firstSelectedCard = cards.FirstOrDefault(selectedCards.Contains);
+                if (firstSelectedCard == null) return false;
+                SetFocusedCard(firstSelectedCard, false);
             }
 
             if (focusedCard.Parent != cardsPanel)
@@ -988,19 +1052,19 @@ namespace DropResize
 
             ImageCardControl nextCard = null;
             var index = cards.IndexOf(focusedCard);
-            if (keyData == Keys.Left && index > 0)
+            if (direction == Keys.Left && index > 0)
             {
                 nextCard = cards[index - 1];
             }
-            else if (keyData == Keys.Right && index >= 0 && index < cards.Count - 1)
+            else if (direction == Keys.Right && index >= 0 && index < cards.Count - 1)
             {
                 nextCard = cards[index + 1];
             }
-            else if (keyData == Keys.Up)
+            else if (direction == Keys.Up)
             {
                 nextCard = FindVerticalNavigationCard(cards, focusedCard, true);
             }
-            else if (keyData == Keys.Down)
+            else if (direction == Keys.Down)
             {
                 nextCard = FindVerticalNavigationCard(cards, focusedCard, false);
             }
@@ -1010,7 +1074,10 @@ namespace DropResize
                 return true;
             }
 
-            SetFocusedCard(nextCard, true);
+            if ((modifiers & Keys.Shift) != 0)
+                SelectRangeTo(nextCard, (modifiers & Keys.Control) != 0);
+            else
+                SetFocusedCard(nextCard, true);
             return true;
         }
 
@@ -1057,20 +1124,10 @@ namespace DropResize
 
         private static int GetReplacementFocusIndex(
             List<ImageCardControl> allCards,
-            List<ImageCardControl> removedCards)
+            ISet<ImageCardControl> removedCards)
         {
-            var indexes = removedCards
-                .Select(card => allCards.IndexOf(card))
-                .Where(index => index >= 0)
-                .OrderBy(index => index)
-                .ToList();
-
-            if (indexes.Count == 0)
-            {
-                return 0;
-            }
-
-            return indexes.Last() - indexes.Count + 1;
+            var lastRemovedIndex = allCards.FindLastIndex(removedCards.Contains);
+            return Math.Max(0, lastRemovedIndex - removedCards.Count + 1);
         }
 
         private void SetFocusedCard(ImageCardControl card, bool selectFocusedCard)
@@ -1101,11 +1158,8 @@ namespace DropResize
             }
 
             ClearSelection();
-            if (focusedCard.Result.Success)
-            {
-                selectedCards.Add(focusedCard);
-                focusedCard.IsSelected = true;
-            }
+            selectionAnchorCard = focusedCard;
+            SetCardSelected(focusedCard, focusedCard.Result.Success);
         }
 
         private void ClearFocusedCard()
@@ -1120,25 +1174,19 @@ namespace DropResize
         private void SelectAllResultCards()
         {
             ClearSelection();
-
-            foreach (var card in cardsPanel.Controls.OfType<ImageCardControl>().Where(card => card.Result.Success))
+            var cards = GetResultCards();
+            foreach (var card in cards.Where(card => card.Result.Success))
             {
-                selectedCards.Add(card);
-                card.IsSelected = true;
+                SetCardSelected(card, true);
             }
+
+            if (focusedCard == null) SetFocusedCard(cards.FirstOrDefault(), false);
+            selectionAnchorCard = focusedCard;
         }
 
         private void ToggleCardSelection(ImageCardControl card)
         {
-            if (selectedCards.Contains(card))
-            {
-                selectedCards.Remove(card);
-                card.IsSelected = false;
-                return;
-            }
-
-            selectedCards.Add(card);
-            card.IsSelected = true;
+            SetCardSelected(card, !selectedCards.Contains(card));
         }
 
         private void DragSelectedCards()
@@ -1160,37 +1208,10 @@ namespace DropResize
 
         private void ApplyMarqueeSelection(Rectangle rectangle, bool additive)
         {
-            var cards = cardsPanel.Controls.OfType<ImageCardControl>()
-                .Where(card => card.Result.Success)
-                .ToList();
-
-            if (!additive)
+            foreach (var card in cardsPanel.Controls.OfType<ImageCardControl>().Where(card => card.Result.Success))
             {
-                foreach (var card in cards)
-                {
-                    var selected = rectangle.IntersectsWith(card.Bounds);
-                    card.IsSelected = selected;
-
-                    if (selected && !selectedCards.Contains(card))
-                    {
-                        selectedCards.Add(card);
-                    }
-                    else if (!selected)
-                    {
-                        selectedCards.Remove(card);
-                    }
-                }
-
-                return;
-            }
-
-            foreach (var card in cards.Where(card => rectangle.IntersectsWith(card.Bounds)))
-            {
-                if (!selectedCards.Contains(card))
-                {
-                    selectedCards.Add(card);
-                    card.IsSelected = true;
-                }
+                var intersects = rectangle.IntersectsWith(card.Bounds);
+                if (!additive || intersects) SetCardSelected(card, intersects);
             }
         }
 

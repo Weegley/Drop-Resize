@@ -46,6 +46,10 @@ Animated GIF and multi-page TIFF handling is basic; the app is intended for quic
 
 Generated files are real temporary files, so standard Windows file drag-and-drop is used.
 
+Click a card to focus it, Ctrl-click to toggle individual cards, or use Ctrl+A to select all completed results.
+Shift-click selects a range from the last anchor card. Shift+arrow keys extend or shrink that range across rows;
+Ctrl+Shift keeps other selected cards. Press Delete to remove selected cards from the list.
+
 ## Requirements
 
 - Windows 10 or newer recommended
@@ -72,6 +76,9 @@ The project targets .NET Framework 4.8 and uses standard .NET / Windows Forms co
 The worker selector controls the maximum number of simultaneous image processing processes. Auto leaves a logical CPU available on multi-core machines, with a ceiling of 32 processes. The actual count is also limited by batch size and an estimate of image memory requirements using half of currently available physical memory. Workers run at BelowNormal priority.
 
 Small previews are created during processing and sent to the UI with each result. Full output bitmaps are not retained by result cards.
+
+Automatic updates remove the downloaded ZIP and extracted files from `%TEMP%\DropResize\updates`
+after installation. Failed or canceled updates also clean their temporary download folder.
 
 Run functional regression tests with `powershell -NoProfile -ExecutionPolicy Bypass -File .\Tests\RunTests.ps1`. The runner reports CPU load and restricts itself and its child processes to one available logical CPU. It does not run large-image performance tests.
 

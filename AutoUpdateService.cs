@@ -15,6 +15,20 @@ namespace DropResize
         private const string UpdaterResourceName = "Drop&Resize.Updater.exe";
         private const string ApplicationFileName = "Drop&Resize.exe";
         private static readonly HttpClient Client = CreateClient();
+        private readonly HttpClient downloadClient;
+        private readonly Action<string, string, string, string, string> startUpdater;
+        private readonly Func<string> getUpdaterPath;
+
+        public AutoUpdateService() : this(Client, StartUpdater,
+            () => EmbeddedExecutableCache.GetExecutablePath(UpdaterResourceName)) { }
+
+        internal AutoUpdateService(HttpClient downloadClient,
+            Action<string, string, string, string, string> startUpdater, Func<string> getUpdaterPath)
+        {
+            this.downloadClient = downloadClient;
+            this.startUpdater = startUpdater;
+            this.getUpdaterPath = getUpdaterPath;
+        }
 
         public async Task<AutoUpdateStartResult> DownloadAndStartUpdateAsync(
             UpdateInfo updateInfo,
@@ -32,40 +46,47 @@ namespace DropResize
             }
 
             ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
-
-            var updateRoot = CreateUpdateRoot(updateInfo);
+            cancellationToken.ThrowIfCancellationRequested();
+            var updateRoot = UpdateWorkspace.Create(updateInfo.Version);
             var packagePath = Path.Combine(updateRoot, "DropResize-Windows.zip");
             var extractPath = Path.Combine(updateRoot, "package");
+            var updaterStarted = false;
 
-            statusChanged?.Invoke("Downloading update...");
-            await DownloadFileAsync(updateInfo.DownloadUrl, packagePath, cancellationToken).ConfigureAwait(false);
-
-            cancellationToken.ThrowIfCancellationRequested();
-            statusChanged?.Invoke("Preparing update...");
-
-            if (Directory.Exists(extractPath))
+            try
             {
-                Directory.Delete(extractPath, true);
+                statusChanged?.Invoke("Downloading update...");
+                await DownloadFileAsync(updateInfo.DownloadUrl, packagePath, cancellationToken).ConfigureAwait(false);
+
+                cancellationToken.ThrowIfCancellationRequested();
+                statusChanged?.Invoke("Preparing update...");
+                cancellationToken.ThrowIfCancellationRequested();
+                Directory.CreateDirectory(extractPath);
+                ZipFile.ExtractToDirectory(packagePath, extractPath);
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var sourceExecutable = FindPackagedExecutable(extractPath);
+                var sourceDirectory = Path.GetDirectoryName(sourceExecutable);
+                var currentExecutable = Assembly.GetExecutingAssembly().Location;
+                var targetDirectory = Path.GetDirectoryName(currentExecutable);
+                var updaterPath = getUpdaterPath();
+
+                statusChanged?.Invoke("Restarting to apply update...");
+                cancellationToken.ThrowIfCancellationRequested();
+                startUpdater(updaterPath, sourceDirectory, targetDirectory, currentExecutable, updateRoot);
+                // The updater now owns these files and removes the ZIP and extraction tree in finally.
+                updaterStarted = true;
+
+                return new AutoUpdateStartResult
+                {
+                    UpdaterPath = updaterPath,
+                    SourceDirectory = sourceDirectory,
+                    TargetDirectory = targetDirectory
+                };
             }
-
-            Directory.CreateDirectory(extractPath);
-            ZipFile.ExtractToDirectory(packagePath, extractPath);
-
-            var sourceExecutable = FindPackagedExecutable(extractPath);
-            var sourceDirectory = Path.GetDirectoryName(sourceExecutable);
-            var currentExecutable = Assembly.GetExecutingAssembly().Location;
-            var targetDirectory = Path.GetDirectoryName(currentExecutable);
-            var updaterPath = EmbeddedExecutableCache.GetExecutablePath(UpdaterResourceName);
-
-            statusChanged?.Invoke("Restarting to apply update...");
-            StartUpdater(updaterPath, sourceDirectory, targetDirectory, currentExecutable);
-
-            return new AutoUpdateStartResult
+            finally
             {
-                UpdaterPath = updaterPath,
-                SourceDirectory = sourceDirectory,
-                TargetDirectory = targetDirectory
-            };
+                if (!updaterStarted) UpdateWorkspace.TryDelete(updateRoot);
+            }
         }
 
         private static HttpClient CreateClient()
@@ -76,30 +97,13 @@ namespace DropResize
             };
         }
 
-        private static string CreateUpdateRoot(UpdateInfo updateInfo)
-        {
-            var safeVersion = string.IsNullOrWhiteSpace(updateInfo.VersionText)
-                ? DateTime.UtcNow.ToString("yyyyMMddHHmmss")
-                : updateInfo.VersionText.Replace(Path.DirectorySeparatorChar, '_').Replace(Path.AltDirectorySeparatorChar, '_');
-
-            var root = Path.Combine(Path.GetTempPath(), "DropResize", "updates", safeVersion);
-
-            if (Directory.Exists(root))
-            {
-                Directory.Delete(root, true);
-            }
-
-            Directory.CreateDirectory(root);
-            return root;
-        }
-
-        private static async Task DownloadFileAsync(string url, string destination, CancellationToken cancellationToken)
+        private async Task DownloadFileAsync(string url, string destination, CancellationToken cancellationToken)
         {
             using (var request = new HttpRequestMessage(HttpMethod.Get, url))
             {
                 request.Headers.TryAddWithoutValidation("User-Agent", "DropResize");
 
-                using (var response = await Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false))
+                using (var response = await downloadClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false))
                 {
                     response.EnsureSuccessStatusCode();
 
@@ -133,22 +137,28 @@ namespace DropResize
             string updaterPath,
             string sourceDirectory,
             string targetDirectory,
-            string executablePath)
+            string executablePath,
+            string updateRoot)
         {
             var currentProcess = Process.GetCurrentProcess();
             var arguments =
                 currentProcess.Id + " " +
                 Quote(sourceDirectory) + " " +
                 Quote(targetDirectory) + " " +
-                Quote(executablePath);
+                Quote(executablePath) + " " +
+                Quote(updateRoot);
 
-            Process.Start(new ProcessStartInfo
+            using (var updater = Process.Start(new ProcessStartInfo
             {
                 FileName = updaterPath,
                 Arguments = arguments,
                 WorkingDirectory = Path.GetDirectoryName(updaterPath),
-                UseShellExecute = true
-            });
+                UseShellExecute = false,
+                CreateNoWindow = true
+            }))
+            {
+                if (updater == null) throw new InvalidOperationException("The update helper could not be started.");
+            }
         }
 
         private static string Quote(string value)
