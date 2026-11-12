@@ -14,7 +14,7 @@ namespace DropResize
         private static void Main()
         {
             var application = Assembly.GetExecutingAssembly();
-            Task.Run(() => UpdateWorkspace.TryDeleteLegacyDownload(application.GetName().Version, application.Location));
+            Task.Run(() => UpdateWorkspace.CleanupAfterStartupAsync(application.GetName().Version, application.Location));
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new Form1());

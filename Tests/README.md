@@ -8,7 +8,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Tests\RunTests.ps1 -Config
 ```
 
 The script builds the test project and its application/worker references, samples
-system CPU utilization, then runs 35 test groups on small images, result cards, and updates. The script uses
+system CPU utilization, then runs 39 test groups on small images, result cards, and updates. The script uses
 Idle priority and one available logical CPU; child workers inherit the affinity.
 Generated inputs and outputs are retained in an isolated `tmp/tests-*` directory
 for inspecting failures. No visible application window is opened.
@@ -28,11 +28,17 @@ Ctrl+Shift, wrapped rows, and scrolling), focus after deletion, and replacing a 
 Two tests create 1000 cards with real window handles in a transparent off-screen
 window, then clear/delete them. They verify disposal, list reuse, and bounded
 layout passes; elapsed times are reported without machine-dependent time limits.
+File-opening tests cover double-clicks on the card and its children, Enter after
+selection/navigation/deletion, sidebar focus, missing outputs, and association or
+viewer errors. They capture the shell launch request without opening an image viewer.
 
 Update tests use an in-memory HTTP handler and real updater processes with a small,
 silent test application. They cover installation and restart, ZIP/extraction cleanup,
 download/copy/launch failures, cancellation, concurrent downloads, temporary file
 locks, cleanup boundaries, and the first upgrade using the old helper. Update
 tests use isolated temporary folders and do not download GitHub releases.
+Empty-parent cleanup is also checked with concurrent downloads and unrelated data
+under a process-local TEMP override.
+Startup cleanup is checked while an older helper finishes deleting its download.
 
 This suite does not run large-image stress tests or verify interactive drag-and-drop.

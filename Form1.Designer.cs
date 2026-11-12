@@ -312,7 +312,8 @@ namespace DropResize
             this.instructionLabel.Text = "Drop images here. Drag resized cards out to copy files.\n" +
                 "Ctrl+click to select individual cards; Ctrl+A to select all completed cards.\n" +
                 "Shift+click or Shift+arrows to select a range.\n" +
-                "Use arrows to navigate and Delete to remove selected cards.";
+                "Use arrows to navigate and Delete to remove selected cards.\n" +
+                "Double-click a card or press Enter to open its resized file.";
             this.instructionLabel.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
             this.instructionLabel.DragDrop += new System.Windows.Forms.DragEventHandler(this.Form1_DragDrop);
             this.instructionLabel.DragEnter += new System.Windows.Forms.DragEventHandler(this.Form1_DragEnter);

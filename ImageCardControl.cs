@@ -67,6 +67,7 @@ namespace DropResize
         public event MouseEventHandler CardMouseDown;
         public event MouseEventHandler CardMouseMove;
         public event MouseEventHandler CardMouseUp;
+        public event MouseEventHandler CardMouseDoubleClick;
 
         public ResizeResult Result { get; private set; }
 
@@ -199,6 +200,13 @@ namespace DropResize
                 if (CardMouseUp != null)
                 {
                     CardMouseUp(this, args);
+                }
+            };
+            control.MouseDoubleClick += (sender, args) =>
+            {
+                if (CardMouseDoubleClick != null)
+                {
+                    CardMouseDoubleClick(this, args);
                 }
             };
 

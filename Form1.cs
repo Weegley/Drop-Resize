@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
@@ -84,6 +85,14 @@ namespace DropResize
         {
             if (MoveFocusedCard(keyData))
             {
+                return true;
+            }
+
+            var activeCard = ActiveControl as ImageCardControl;
+            if (keyData == Keys.Enter && activeCard != null && activeCard.Parent == cardsPanel)
+            {
+                SetFocusedCard(activeCard, false);
+                OpenResultFile(activeCard);
                 return true;
             }
 
@@ -722,6 +731,7 @@ namespace DropResize
             card.CardMouseDown += ImageCard_MouseDown;
             card.CardMouseMove += ImageCard_MouseMove;
             card.CardMouseUp += ImageCard_MouseUp;
+            card.CardMouseDoubleClick += ImageCard_MouseDoubleClick;
             card.SetDropHandlers(Form1_DragEnter, Form1_DragDrop);
             cardsPanel.Controls.Add(card);
         }
@@ -838,6 +848,12 @@ namespace DropResize
                 return;
             }
 
+            if (e.Clicks > 1)
+            {
+                dragStartCard = null;
+                return;
+            }
+
             SelectCard(card, ModifierKeys);
             dragStartCard = card.Result.Success ? card : null;
             dragStartPoint = e.Location;
@@ -925,6 +941,50 @@ namespace DropResize
         private void ImageCard_MouseUp(object sender, MouseEventArgs e)
         {
             dragStartCard = null;
+        }
+
+        private void ImageCard_MouseDoubleClick(object sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left) return;
+            var card = (ImageCardControl)sender;
+            dragStartCard = null;
+            SetFocusedCard(card, false);
+            OpenResultFile(card);
+        }
+
+        private void OpenResultFile(ImageCardControl card)
+        {
+            if (card.IsDisposed || card.Parent != cardsPanel || !card.Result.Success) return;
+            var outputPath = card.Result.OutputPath;
+            if (!File.Exists(outputPath))
+            {
+                SetStatus("Output file is no longer available: " + outputPath);
+                return;
+            }
+
+            try
+            {
+                var fullPath = Path.GetFullPath(outputPath);
+                OpenFileInDefaultApplication(new ProcessStartInfo
+                {
+                    FileName = fullPath,
+                    WorkingDirectory = Path.GetDirectoryName(fullPath),
+                    UseShellExecute = true,
+                    Verb = "open"
+                });
+                SetStatus("Opened " + Path.GetFileName(fullPath) + ".");
+            }
+            catch (Exception ex) when (ex is Win32Exception || ex is InvalidOperationException ||
+                ex is IOException || ex is UnauthorizedAccessException)
+            {
+                SetStatus("Could not open file: " + ex.Message);
+            }
+        }
+
+        protected virtual void OpenFileInDefaultApplication(ProcessStartInfo startInfo)
+        {
+            // The shell uses the user's file association; disposing this handle does not close the viewer.
+            using (Process.Start(startInfo)) { }
         }
 
         private void SelectOnly(ImageCardControl card)
@@ -1151,6 +1211,8 @@ namespace DropResize
 
             focusedCard.IsKeyboardFocused = true;
             cardsPanel.ScrollControlIntoView(focusedCard);
+            // Keep keyboard commands on the card while allowing sidebar controls to use Enter normally.
+            focusedCard.Select();
 
             if (!selectFocusedCard)
             {

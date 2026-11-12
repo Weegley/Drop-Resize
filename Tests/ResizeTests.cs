@@ -31,6 +31,7 @@ internal static class ResizeTests
         root = Path.Combine(args[0], "tmp", "tests-" + Guid.NewGuid().ToString("N"));
         worker = args[1];
         Directory.CreateDirectory(root);
+        CardInteractionTests.Initialize(root);
         UpdateCleanupTests.Initialize(args[0], root, worker);
 
         Test("fit landscape and portrait, bounded previews", TestFit);
@@ -53,6 +54,9 @@ internal static class ResizeTests
         Test("callback failure stops peers and cleans job files", TestCallbackFailure);
         Test("worker crash, missing executable and invalid protocol", TestWorkerFailures);
         Test("cards own small previews, dispose safely, tolerate missing preview", TestCards);
+        Test("double-click opens each card area through the default file association", CardInteractionTests.TestOpenByDoubleClick);
+        Test("Enter opens the current card and respects sidebar keyboard focus", CardInteractionTests.TestOpenByEnter);
+        Test("missing outputs and viewer launch errors do not break card opening", CardInteractionTests.TestOpenFailures);
         Test("Shift-click ranges retain their anchor and support Ctrl+Shift", CardInteractionTests.TestShiftClick);
         Test("Shift-arrows extend, shrink and cross the selection anchor", CardInteractionTests.TestShiftArrows);
         Test("Shift-Up/Down follow wrapped rows and scroll into view", CardInteractionTests.TestShiftVerticalArrows);
@@ -68,6 +72,7 @@ internal static class ResizeTests
         Test("updater copy and restart failures also clean their workspace", UpdateCleanupTests.TestUpdaterFailures);
         Test("cleanup preserves unrelated files and retries temporary locks", UpdateCleanupTests.TestCleanupBoundariesAndRetry);
         Test("first upgrade with the old helper cleans its leftover ZIP", UpdateCleanupTests.TestLegacyCleanup);
+        Test("last update removes empty parents and preserves active downloads", UpdateCleanupTests.TestEmptyParentCleanup);
 
         Console.WriteLine("Passed: {0}; failed: {1}. Artifacts: {2}", passed, failed, root);
         return failed == 0 ? 0 : 1;

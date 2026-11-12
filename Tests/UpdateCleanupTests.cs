@@ -371,6 +371,70 @@ internal static class UpdateCleanupTests
         finally { UpdateWorkspace.TryDelete(workspace); }
     }
 
+    public static void TestEmptyParentCleanup()
+    {
+        var sandboxTemp = Path.Combine(artifactsRoot, "temp-parents-" + Guid.NewGuid().ToString("N").Substring(0, 8));
+        Directory.CreateDirectory(sandboxTemp);
+        File.WriteAllText(Path.Combine(sandboxTemp, "keep-temp-root.txt"), "keep");
+        var previousTmp = Environment.GetEnvironmentVariable("TMP");
+        var previousTemp = Environment.GetEnvironmentVariable("TEMP");
+        try
+        {
+            // Change only this test process; never prune the user's real shared TEMP folders in this test.
+            Environment.SetEnvironmentVariable("TMP", sandboxTemp);
+            Environment.SetEnvironmentVariable("TEMP", sandboxTemp);
+            Assert(Path.GetFullPath(Path.GetTempPath()).TrimEnd(Path.DirectorySeparatorChar) ==
+                Path.GetFullPath(sandboxTemp).TrimEnd(Path.DirectorySeparatorChar), "The test TEMP override was not applied.");
+            var updatesDirectory = UpdateWorkspace.UpdatesDirectory;
+            var applicationTemp = Path.GetDirectoryName(updatesDirectory);
+            var first = UpdateWorkspace.Create(Update().Version);
+            var active = UpdateWorkspace.Create(Update().Version);
+            File.WriteAllText(Path.Combine(first, "download.zip"), "download");
+            File.WriteAllText(Path.Combine(active, "download.zip"), "active download");
+            Assert(UpdateWorkspace.TryDelete(first), "The finished download was not removed.");
+            Assert(File.Exists(Path.Combine(active, "download.zip")) && Directory.Exists(updatesDirectory),
+                "Parent cleanup removed another active download.");
+            Assert(UpdateWorkspace.TryDelete(active), "The last download was not removed.");
+            Assert(!Directory.Exists(updatesDirectory) && !Directory.Exists(applicationTemp),
+                "Empty updates/DropResize parents remain after the last download.");
+
+            var workspace = UpdateWorkspace.Create(Update().Version);
+            var marker = Path.Combine(applicationTemp, "keep-other-data.txt");
+            File.WriteAllText(marker, "other application data");
+            Assert(UpdateWorkspace.TryDelete(workspace), "Download cleanup failed with other data in the app folder.");
+            Assert(!Directory.Exists(updatesDirectory) && File.Exists(marker), "Cleanup removed unrelated data in DropResize.");
+            File.Delete(marker);
+            UpdateWorkspace.TryDeleteLegacyDownload(Update().Version, testApplication);
+            Assert(!Directory.Exists(applicationTemp), "An empty DropResize folder without updates was not removed.");
+
+            Parallel.For(0, 20, new ParallelOptions { MaxDegreeOfParallelism = 2 }, index => {
+                var directory = UpdateWorkspace.Create(new Version(60000, 0, 0, index));
+                File.WriteAllText(Path.Combine(directory, "download.zip"), "download");
+                Assert(UpdateWorkspace.TryDelete(directory), "Concurrent cleanup failed.");
+            });
+            Assert(!Directory.Exists(applicationTemp), "Concurrent cleanup left empty parent folders.");
+
+            var oldHelperVersion = Update().Version;
+            var oldHelperWorkspace = UpdateWorkspace.Create(oldHelperVersion);
+            File.WriteAllText(Path.Combine(oldHelperWorkspace, "download.zip"), "old helper is still cleaning up");
+            var startupCleanup = UpdateWorkspace.CleanupAfterStartupAsync(oldHelperVersion, testApplication);
+            Assert(Directory.Exists(oldHelperWorkspace), "Startup cleanup removed a helper's active workspace.");
+            var oldHelperExit = Task.Run(() => {
+                Thread.Sleep(100);
+                Assert(UpdateWorkspace.IsUpdateDirectory(oldHelperWorkspace), "Invalid simulated helper cleanup path.");
+                Directory.Delete(oldHelperWorkspace, true); // Older helpers do not remove empty parents.
+            });
+            Task.WhenAll(oldHelperExit, startupCleanup).GetAwaiter().GetResult();
+            Assert(!Directory.Exists(applicationTemp), "Startup cleanup ran before the old helper finished and left empty parents.");
+            Assert(File.Exists(Path.Combine(sandboxTemp, "keep-temp-root.txt")), "Cleanup removed the TEMP root itself.");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TMP", previousTmp);
+            Environment.SetEnvironmentVariable("TEMP", previousTemp);
+        }
+    }
+
     public static void TestLegacyCleanup()
     {
         var update = Update();

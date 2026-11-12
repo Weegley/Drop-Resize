@@ -14,7 +14,7 @@
     <Deterministic>true</Deterministic>
     <Prefer32Bit>false</Prefer32Bit>
     <ApplicationIcon>DropResize_icon_multi.ico</ApplicationIcon>
-    <BaseVersion>1.2.1</BaseVersion>
+    <BaseVersion>1.2.2</BaseVersion>
     <BuildRevision Condition=" '$(BuildRevision)' == '' ">0</BuildRevision>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">

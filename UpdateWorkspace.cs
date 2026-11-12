@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace DropResize
 {
@@ -17,8 +18,19 @@ namespace DropResize
             // Separate sessions also allow two app instances to download the same release safely.
             var name = (version == null ? "update" : version.ToString()) + "_" + Guid.NewGuid().ToString("N");
             var directory = Path.Combine(UpdatesDirectory, name);
-            Directory.CreateDirectory(directory);
-            return directory;
+            for (var attempt = 0; ; attempt++)
+            {
+                try
+                {
+                    Directory.CreateDirectory(directory);
+                    return directory;
+                }
+                catch (DirectoryNotFoundException) when (attempt < 2)
+                {
+                    // Another updater may prune an empty parent between native directory-create calls.
+                    Thread.Sleep(10);
+                }
+            }
         }
 
         internal static bool IsUpdateDirectory(string directory)
@@ -51,6 +63,7 @@ namespace DropResize
                 try
                 {
                     if (Directory.Exists(directory)) Directory.Delete(directory, true);
+                    RemoveEmptyParentDirectories();
                     return true;
                 }
                 catch (IOException) { }
@@ -59,6 +72,29 @@ namespace DropResize
                 if (attempt < 9) Thread.Sleep(100);
             }
             return false;
+        }
+
+        private static void RemoveEmptyParentDirectories()
+        {
+            // Non-recursive deletion is atomic: an active download or unrelated file keeps its parent alive.
+            if (TryDeleteEmptyDirectory(UpdatesDirectory))
+                TryDeleteEmptyDirectory(Path.GetDirectoryName(UpdatesDirectory));
+        }
+
+        private static bool TryDeleteEmptyDirectory(string directory)
+        {
+            try { Directory.Delete(directory, false); return true; }
+            catch (DirectoryNotFoundException) { return true; }
+            catch (IOException) { return false; }
+            catch (UnauthorizedAccessException) { return false; }
+        }
+
+        internal static async Task CleanupAfterStartupAsync(Version installedVersion, string executablePath)
+        {
+            TryDeleteLegacyDownload(installedVersion, executablePath);
+            // Older helpers finish deleting their download after starting the new application.
+            await Task.Delay(1500).ConfigureAwait(false);
+            TryDeleteLegacyDownload(installedVersion, executablePath);
         }
 
         internal static bool TryDeleteLegacyDownload(Version installedVersion, string executablePath)

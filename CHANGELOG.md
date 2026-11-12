@@ -1,3 +1,13 @@
+## v1.2.2
+
+### Changes
+
+- Open resized files in the default application by double-clicking any card area or pressing Enter on the current card.
+- Report missing files and viewer launch errors in the status bar; keep Enter available to sidebar controls.
+- Remove empty `updates` and `DropResize` parent folders after update cleanup while preserving active downloads and other data.
+- Repeat startup cleanup after older update helpers finish, covering the first upgrade from the previous release.
+- Expand regression coverage to 39 groups, including card opening and concurrent parent-folder cleanup.
+
 ## v1.2.1
 
 ### Changes

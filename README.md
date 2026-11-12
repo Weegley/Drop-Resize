@@ -49,6 +49,7 @@ Generated files are real temporary files, so standard Windows file drag-and-drop
 Click a card to focus it, Ctrl-click to toggle individual cards, or use Ctrl+A to select all completed results.
 Shift-click selects a range from the last anchor card. Shift+arrow keys extend or shrink that range across rows;
 Ctrl+Shift keeps other selected cards. Press Delete to remove selected cards from the list.
+Double-click a card or press Enter on the current card to open its resized file in the default application.
 
 ## Requirements
 
@@ -79,6 +80,7 @@ Small previews are created during processing and sent to the UI with each result
 
 Automatic updates remove the downloaded ZIP and extracted files from `%TEMP%\DropResize\updates`
 after installation. Failed or canceled updates also clean their temporary download folder.
+The empty `updates` and `DropResize` parent folders are removed once no downloads remain.
 
 Run functional regression tests with `powershell -NoProfile -ExecutionPolicy Bypass -File .\Tests\RunTests.ps1`. The runner reports CPU load and restricts itself and its child processes to one available logical CPU. It does not run large-image performance tests.
 
